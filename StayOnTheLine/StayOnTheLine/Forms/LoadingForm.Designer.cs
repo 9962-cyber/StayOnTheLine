@@ -151,7 +151,7 @@ namespace StayOnTheLine
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.Black;
             BackgroundImage = (Image)resources.GetObject("$this.BackgroundImage");
-            BackgroundImageLayout = ImageLayout.Zoom;
+            BackgroundImageLayout = ImageLayout.Stretch;
             ClientSize = new Size(1920, 1080);
             Controls.Add(lblPrompt);
             Controls.Add(lblPercentage);
@@ -162,6 +162,7 @@ namespace StayOnTheLine
             Controls.Add(lblSubtitle);
             DoubleBuffered = true;
             FormBorderStyle = FormBorderStyle.None;
+            KeyPreview = true;
             Name = "LoadingForm";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Stay On The Line";

@@ -23,6 +23,9 @@ namespace StayOnTheLine
             ApplyCustomFonts();
             SubscribeToLoadingEvents();
             WireClickEvents(this);
+            lblPrompt.Click += (s, e) => HandleUserAction();
+            lblPrompt.Cursor = Cursors.Hand;
+            this.KeyPress += (s, e) => HandleUserAction();
         }
 
         /// <summary>
@@ -49,9 +52,13 @@ namespace StayOnTheLine
 
         private void WireClickEvents(Control parent)
         {
+            parent.Click += (s, e) => HandleUserAction();
+            parent.MouseClick += (s, e) => HandleUserAction();
+
             foreach (Control control in parent.Controls)
             {
-                control.Click += (s, e) => LoadingForm_Click(this, e);
+                control.Click += (s, e) => HandleUserAction();
+                control.MouseClick += (s, e) => HandleUserAction();
                 if (control.HasChildren)
                 {
                     WireClickEvents(control);
@@ -191,12 +198,12 @@ namespace StayOnTheLine
 
             this.Hide();
 
-            using (var mainForm = new MainForm())
-            {
-                mainForm.ShowDialog();
-            }
-
-            this.Close();
+            var mainForm = new MainForm();
+            mainForm.FormClosed += (s, e) => this.Close();
+            mainForm.Show();
+            mainForm.BringToFront();
+            mainForm.Activate();
+            mainForm.Focus();
         }
 
         private void lblTitleStayOn_Click(object sender, EventArgs e)
