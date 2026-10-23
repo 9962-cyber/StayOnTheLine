@@ -312,9 +312,9 @@ namespace StayOnTheLine.Forms
             chkMuteAll.Cursor = Cursors.Hand;
             chkMuteAll.Font = new Font("IM FELL DW Pica SC", 10F, FontStyle.Bold, GraphicsUnit.Point, 0);
             chkMuteAll.ForeColor = Color.FromArgb(40, 25, 12);
-            chkMuteAll.Location = new Point(60, 78);
+            chkMuteAll.Location = new Point(48, 78);
             chkMuteAll.Name = "chkMuteAll";
-            chkMuteAll.Size = new Size(300, 44);
+            chkMuteAll.Size = new Size(330, 44);
             chkMuteAll.TabIndex = 1;
             chkMuteAll.Text = "[   ] MUTE ALL FREQUENCIES";
             chkMuteAll.TextAlign = ContentAlignment.MiddleCenter;
@@ -759,15 +759,16 @@ namespace StayOnTheLine.Forms
             // 
             // lblFooterHelp
             // 
-            lblFooterHelp.AutoSize = true;
+            lblFooterHelp.AutoSize = false;
             lblFooterHelp.BackColor = Color.Transparent;
             lblFooterHelp.Font = new Font("IM FELL DW Pica", 9.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblFooterHelp.ForeColor = Color.FromArgb(65, 48, 32);
-            lblFooterHelp.Location = new Point(70, 688);
+            lblFooterHelp.Location = new Point(65, 688);
             lblFooterHelp.Name = "lblFooterHelp";
-            lblFooterHelp.Size = new Size(420, 22);
+            lblFooterHelp.Size = new Size(475, 24);
             lblFooterHelp.TabIndex = 8;
             lblFooterHelp.Text = "Press ENTER to Apply && Save · Press ESC or ✕ to Discard";
+            lblFooterHelp.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // btnCancel
             // 
@@ -891,5 +892,6 @@ namespace StayOnTheLine.Forms
         private Label lblFooterHelp;
         private Label btnCancel;
         private Label btnApply;
+        private Label btnExit;   // Optional – shown when opened from Tutorial (ShowExitButton = true)
     }
 }

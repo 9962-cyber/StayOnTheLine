@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -91,6 +91,7 @@ namespace StayOnTheLine
                 case Keys.Up: Select((selected <= 0 ? menu.Length : selected) - 1); break;
                 case Keys.Enter: if (selected >= 0) Activate(selected); break;
                 case Keys.Escape: Application.Exit(); break;
+                case Keys.F1: OpenTutorialFlow(); break; // Open tutorial with F1
             }
         }
 
@@ -135,6 +136,17 @@ namespace StayOnTheLine
             settingsForm.ShowDialog(this);
         }
 
+        // Opens the tutorial form (automatically after creating a shift or via shortcut)
+        private void OpenTutorialFlow()
+        {
+            this.Hide();
+            using (var tutorial = new Tutorial())
+            {
+                tutorial.ShowDialog();
+            }
+            this.Show();
+        }
+
         private void StartNewShiftFlow()
         {
             using var archiveForm = new Forms.OperatorArchiveForm(SaveManager.Instance, isNewShiftMode: true);
@@ -172,6 +184,8 @@ namespace StayOnTheLine
                 "Dispatch Line Connected",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+
+            OpenTutorialFlow();
         }
 
         private void pbBackground_Click(object sender, EventArgs e)

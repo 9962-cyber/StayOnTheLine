@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -73,6 +74,28 @@ namespace StayOnTheLine.Forms
             _isInitializing = false;
         }
 
+        // ---------------------------------------------------------------
+        //  Exit button (shown only when ShowExitButton = true)
+        // ---------------------------------------------------------------
+        /// <summary>
+        /// Set to true before calling ShowDialog() from the Tutorial form.
+        /// Adds an "EXIT TO MAIN MENU" button; clicking it returns DialogResult.Abort
+        /// so the caller knows to close itself as well.
+        /// </summary>
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool ShowExitButton
+        {
+            get => btnExit?.Visible ?? false;
+            set
+            {
+                if (value)
+                    SetupExitButton();
+                else if (btnExit != null)
+                    btnExit.Visible = false;
+            }
+        }
+
         private static void EnableDoubleBuffering(Control control)
         {
             try
@@ -96,6 +119,10 @@ namespace StayOnTheLine.Forms
         private void SettingsForm_Resize(object sender, EventArgs e)
         {
             CenterLedger();
+            if (pnlConfirmOverlay != null && pnlConfirmOverlay.Visible)
+            {
+                PositionConfirmOverlay();
+            }
             Invalidate();
         }
 
@@ -201,7 +228,7 @@ namespace StayOnTheLine.Forms
             lblRow1Summary.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
             lblRow1Toggle.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
             lblAudioDesc.Font = FontManager.GetItalicFont(10F);
-            chkMuteAll.Font = FontManager.GetSmallCapsFont(10F, FontStyle.Bold);
+            chkMuteAll.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
             lblAudioHint.Font = FontManager.GetItalicFont(8.5F);
 
             lblMaster.Font = FontManager.GetSmallCapsFont(10F, FontStyle.Bold);
@@ -298,9 +325,9 @@ namespace StayOnTheLine.Forms
             pnlRow2Body.Visible = (_expandedSection == 1);
             pnlRow3Body.Visible = (_expandedSection == 2);
 
-            lblRow1Toggle.Text = (_expandedSection == 0) ? "▲ ACTIVE FILE" : "▼ OPEN FILE";
-            lblRow2Toggle.Text = (_expandedSection == 1) ? "▲ ACTIVE FILE" : "▼ OPEN FILE";
-            lblRow3Toggle.Text = (_expandedSection == 2) ? "▲ ACTIVE FILE" : "▼ OPEN FILE";
+            lblRow1Toggle.Text = string.Empty;
+            lblRow2Toggle.Text = string.Empty;
+            lblRow3Toggle.Text = string.Empty;
 
             lblRow1Toggle.ForeColor = (_expandedSection == 0) ? Color.FromArgb(170, 45, 25) : Color.FromArgb(70, 50, 30);
             lblRow2Toggle.ForeColor = (_expandedSection == 1) ? Color.FromArgb(170, 45, 25) : Color.FromArgb(70, 50, 30);
@@ -1033,6 +1060,250 @@ namespace StayOnTheLine.Forms
             }
         }
 
+        private void SetupExitButton()
+        {
+            if (btnExit != null)
+            {
+                btnExit.Visible = true;
+                return; // already built
+            }
+
+            // Position it to the left of DISCARD, matching same height
+            btnExit = new Label
+            {
+                BackColor = Color.FromArgb(214, 202, 178),
+                Cursor    = Cursors.Hand,
+                Font      = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(40, 25, 12),
+                Location  = new Point(555, 676),   // left of DISCARD (740)
+                Name      = "btnExit",
+                Size      = new Size(165, 48),
+                TabIndex  = 11,
+                Text      = string.Empty,
+                TextAlign = ContentAlignment.MiddleCenter,
+                UseMnemonic = false
+            };
+
+            // Paint – same parchment-tan style as DISCARD
+            btnExit.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = new Rectangle(0, 0, btnExit.Width - 1, btnExit.Height - 1);
+                using var path = CreateRoundedPath(rect, 6);
+
+                bool isHovered = btnExit.ClientRectangle.Contains(btnExit.PointToClient(Cursor.Position));
+                Color bgColor = isHovered
+                    ? Color.FromArgb(228, 218, 196)
+                    : Color.FromArgb(214, 202, 178);
+
+                using (var bgBrush = new SolidBrush(bgColor))
+                    e.Graphics.FillPath(bgBrush, path);
+
+                using (var borderPen = new Pen(isHovered
+                    ? Color.FromArgb(160, 65, 45)
+                    : Color.FromArgb(135, 105, 75), 1.5f))
+                    e.Graphics.DrawPath(borderPen, path);
+
+                var innerRect = new Rectangle(2, 2, btnExit.Width - 5, btnExit.Height - 5);
+                using (var innerPath = CreateRoundedPath(innerRect, 4))
+                using (var innerPen = new Pen(Color.FromArgb(90, 255, 255, 255), 1f))
+                    e.Graphics.DrawPath(innerPen, innerPath);
+
+                Color textColor = isHovered ? Color.FromArgb(160, 45, 30) : Color.FromArgb(42, 28, 16);
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    "EXIT TO MAIN MENU",
+                    btnExit.Font,
+                    rect,
+                    textColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            };
+
+            // Hover audio + repaint
+            btnExit.MouseEnter += (s, e) =>
+            {
+                AudioManager.Instance.PlayFrequencyBlip();
+                btnExit.ForeColor = Color.FromArgb(160, 45, 30);
+                btnExit.Invalidate();
+            };
+            btnExit.MouseLeave += (s, e) =>
+            {
+                btnExit.ForeColor = Color.FromArgb(42, 28, 16);
+                btnExit.Invalidate();
+            };
+
+            // Click – open confirmation overlay on top of the darkened settings ledger
+            btnExit.Click += (s, e) =>
+            {
+                AudioManager.Instance.PlayFrequencyBlip();
+                ShowConfirmOverlay();
+            };
+
+            pnlParchmentContainer.Controls.Add(btnExit);
+        }
+
+        // ------------------------------------------------------------------
+        //  EXIT CONFIRMATION OVERLAY (Darkened settings background + Save/Yes/No)
+        // ------------------------------------------------------------------
+        private Panel pnlConfirmOverlay;
+        private Label lblConfirmTitle;
+        private Label lblConfirmSub;
+        private Label btnConfirmSave;
+        private Label btnConfirmYes;
+        private Label btnConfirmNo;
+
+        private void BuildConfirmOverlay()
+        {
+            if (pnlConfirmOverlay != null) return;
+
+            pnlConfirmOverlay = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.FromArgb(220, 0, 0, 0),
+                Visible = false,
+                Cursor = Cursors.Default
+            };
+            pnlConfirmOverlay.Click += (s, e) => { /* absorb */ };
+
+            // Vignette painting so the settings screen is visibly darkened behind it
+            pnlConfirmOverlay.Paint += (s, ev) =>
+            {
+                var g = ev.Graphics;
+                var rc = pnlConfirmOverlay.ClientRectangle;
+                using var path = new GraphicsPath();
+                path.AddRectangle(rc);
+                using var pgb = new PathGradientBrush(path);
+                pgb.CenterColor = Color.FromArgb(0, 0, 0, 0);
+                pgb.SurroundColors = new[] { Color.FromArgb(170, 0, 0, 0) };
+                pgb.FocusScales = new PointF(0.45f, 0.35f);
+                g.FillRectangle(pgb, rc);
+
+                // Analog CRT scanlines
+                using var scanPen = new Pen(Color.FromArgb(20, 0, 0, 0), 1f);
+                for (int y = 0; y < rc.Height; y += 4)
+                {
+                    g.DrawLine(scanPen, 0, y, rc.Width, y);
+                }
+            };
+
+            lblConfirmTitle = new Label
+            {
+                Text = "ARE YOU SURE?",
+                ForeColor = Color.FromArgb(235, 228, 210),
+                BackColor = Color.Transparent,
+                AutoSize = true,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            lblConfirmSub = new Label
+            {
+                Text = "The line will go silent. Unsaved progress may be lost.",
+                ForeColor = Color.FromArgb(160, 155, 140),
+                BackColor = Color.Transparent,
+                AutoSize = true,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            btnConfirmSave = MakeConfirmButton("SAVE & EXIT");
+            btnConfirmYes  = MakeConfirmButton("YES");
+            btnConfirmNo   = MakeConfirmButton("NO");
+
+            btnConfirmSave.Click += (s, e) => ConfirmSaveAndExit();
+            btnConfirmYes.Click  += (s, e) => ConfirmExitWithoutSaving();
+            btnConfirmNo.Click   += (s, e) => CancelConfirmOverlay();
+
+            pnlConfirmOverlay.Controls.AddRange(new Control[]
+            {
+                lblConfirmTitle, lblConfirmSub, btnConfirmSave, btnConfirmYes, btnConfirmNo
+            });
+
+            Controls.Add(pnlConfirmOverlay);
+        }
+
+        private Label MakeConfirmButton(string text)
+        {
+            var lbl = new Label
+            {
+                Text = text,
+                ForeColor = Color.FromArgb(200, 198, 190),
+                BackColor = Color.Transparent,
+                AutoSize = false,
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            lbl.MouseEnter += (s, e) =>
+            {
+                AudioManager.Instance.PlayFrequencyBlip();
+                lbl.ForeColor = Color.FromArgb(255, 230, 180);
+            };
+            lbl.MouseLeave += (s, e) =>
+            {
+                lbl.ForeColor = Color.FromArgb(200, 198, 190);
+            };
+            return lbl;
+        }
+
+        private void PositionConfirmOverlay()
+        {
+            if (pnlConfirmOverlay == null) return;
+            int W = ClientSize.Width, H = ClientSize.Height;
+            float s = H / 1080f;
+
+            lblConfirmTitle.Font = FontManager.GetSmallCapsFont(Math.Max(24f, 52f * s), FontStyle.Bold);
+            lblConfirmTitle.Size = new Size(W, (int)(80 * s));
+            lblConfirmTitle.Location = new Point(0, (int)(H * 0.28f));
+
+            lblConfirmSub.Font = FontManager.GetItalicFont(Math.Max(10f, 15f * s));
+            lblConfirmSub.Size = new Size(W, (int)(36 * s));
+            lblConfirmSub.Location = new Point(0, (int)(H * 0.28f) + (int)(85 * s));
+
+            float bSize = Math.Max(14f, 24f * s);
+            int spacing = (int)(52 * s);
+            int startY = (int)(H * 0.48f);
+
+            Label[] btns = { btnConfirmSave, btnConfirmYes, btnConfirmNo };
+            for (int i = 0; i < btns.Length; i++)
+            {
+                btns[i].Font = FontManager.GetSmallCapsFont(bSize, FontStyle.Bold);
+                btns[i].Size = new Size(W, (int)(44 * s));
+                btns[i].TextAlign = ContentAlignment.MiddleCenter;
+                btns[i].Location = new Point(0, startY + i * spacing);
+            }
+        }
+
+        private void ShowConfirmOverlay()
+        {
+            BuildConfirmOverlay();
+            PositionConfirmOverlay();
+            pnlConfirmOverlay.Visible = true;
+            pnlConfirmOverlay.BringToFront();
+        }
+
+        private void ConfirmSaveAndExit()
+        {
+            AudioManager.Instance.PlayFrequencyBlip();
+            SettingsManager.Instance.SaveSettings(_pendingSettings);
+            DialogResult = DialogResult.Abort;
+            Close();
+        }
+
+        private void ConfirmExitWithoutSaving()
+        {
+            AudioManager.Instance.PlayFrequencyBlip();
+            AudioManager.Instance.ApplySettings(_initialSettings);
+            DialogResult = DialogResult.Abort;
+            Close();
+        }
+
+        private void CancelConfirmOverlay()
+        {
+            AudioManager.Instance.PlayPaperRustle();
+            if (pnlConfirmOverlay != null)
+            {
+                pnlConfirmOverlay.Visible = false;
+            }
+        }
+
         private void btnApply_Click(object sender, EventArgs e)
         {
             SettingsManager.Instance.SaveSettings(_pendingSettings);
@@ -1057,6 +1328,30 @@ namespace StayOnTheLine.Forms
 
         private void SettingsForm_KeyDown(object sender, KeyEventArgs e)
         {
+            if (pnlConfirmOverlay != null && pnlConfirmOverlay.Visible)
+            {
+                if (e.KeyCode == Keys.S)
+                {
+                    ConfirmSaveAndExit();
+                    e.Handled = true;
+                    return;
+                }
+                else if (e.KeyCode == Keys.Y || e.KeyCode == Keys.Enter)
+                {
+                    ConfirmExitWithoutSaving();
+                    e.Handled = true;
+                    return;
+                }
+                else if (e.KeyCode == Keys.N || e.KeyCode == Keys.Escape)
+                {
+                    CancelConfirmOverlay();
+                    e.Handled = true;
+                    return;
+                }
+                e.Handled = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.Escape)
             {
                 btnCancel_Click(sender, e);
