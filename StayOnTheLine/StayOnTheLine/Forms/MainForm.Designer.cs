@@ -25,6 +25,7 @@ namespace StayOnTheLine
             lblTagline = new Label();
             lblNewShift = new Label();
             lblContinue = new Label();
+            lblSettings = new Label();
             lblQuit = new Label();
             lblFooterLeft = new Label();
             lblFooterRight = new Label();
@@ -44,6 +45,7 @@ namespace StayOnTheLine
             pbBackground.Controls.Add(lblTagline);
             pbBackground.Controls.Add(lblNewShift);
             pbBackground.Controls.Add(lblContinue);
+            pbBackground.Controls.Add(lblSettings);
             pbBackground.Controls.Add(lblQuit);
             pbBackground.Controls.Add(lblFooterLeft);
             pbBackground.Controls.Add(lblFooterRight);
@@ -176,6 +178,22 @@ namespace StayOnTheLine
             lblContinue.MouseEnter += MenuItem_MouseEnter;
             lblContinue.MouseLeave += MenuItem_MouseLeave;
             // 
+            // lblSettings
+            // 
+            lblSettings.AutoSize = true;
+            lblSettings.BackColor = Color.Transparent;
+            lblSettings.Cursor = Cursors.Hand;
+            lblSettings.Font = new Font("IM FELL DW Pica", 28.2F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblSettings.ForeColor = Color.FromArgb(200, 198, 190);
+            lblSettings.Location = new Point(190, 734);
+            lblSettings.Name = "lblSettings";
+            lblSettings.Size = new Size(185, 59);
+            lblSettings.TabIndex = 9;
+            lblSettings.Text = "Settings";
+            lblSettings.Click += MenuItem_Click;
+            lblSettings.MouseEnter += MenuItem_MouseEnter;
+            lblSettings.MouseLeave += MenuItem_MouseLeave;
+            // 
             // lblQuit
             // 
             lblQuit.AutoSize = true;
@@ -183,10 +201,10 @@ namespace StayOnTheLine
             lblQuit.Cursor = Cursors.Hand;
             lblQuit.Font = new Font("IM FELL DW Pica", 28.2F, FontStyle.Regular, GraphicsUnit.Point, 0);
             lblQuit.ForeColor = Color.FromArgb(120, 118, 112);
-            lblQuit.Location = new Point(190, 734);
+            lblQuit.Location = new Point(190, 831);
             lblQuit.Name = "lblQuit";
             lblQuit.Size = new Size(110, 59);
-            lblQuit.TabIndex = 9;
+            lblQuit.TabIndex = 10;
             lblQuit.Text = "Quit";
             lblQuit.Click += MenuItem_Click;
             lblQuit.MouseEnter += MenuItem_MouseEnter;
@@ -248,6 +266,7 @@ namespace StayOnTheLine
         private System.Windows.Forms.Label lblTagline;
         private System.Windows.Forms.Label lblNewShift;
         private System.Windows.Forms.Label lblContinue;
+        private System.Windows.Forms.Label lblSettings;
         private System.Windows.Forms.Label lblQuit;
         private System.Windows.Forms.Label lblFooterLeft;
         private System.Windows.Forms.Label lblFooterRight;

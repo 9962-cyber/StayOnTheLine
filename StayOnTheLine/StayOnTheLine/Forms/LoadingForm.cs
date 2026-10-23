@@ -1,5 +1,6 @@
 using StayOnTheLine.Models;
 using StayOnTheLine.Systems;
+using static StayOnTheLine.Systems.AudioManager;
 
 namespace StayOnTheLine
 {
@@ -17,15 +18,23 @@ namespace StayOnTheLine
         private readonly LoadingManager _loadingManager = new();
         private bool _isTransitioning = false;
 
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED: smooth double-buffered compositing
+                return cp;
+            }
+        }
+
         public LoadingForm()
         {
             InitializeComponent();
             ApplyCustomFonts();
             SubscribeToLoadingEvents();
-            WireClickEvents(this);
             lblPrompt.Click += (s, e) => HandleUserAction();
             lblPrompt.Cursor = Cursors.Hand;
-            this.KeyPress += (s, e) => HandleUserAction();
         }
 
         /// <summary>
@@ -50,27 +59,13 @@ namespace StayOnTheLine
             lblTitleTheLine.Font = FontManager.GetItalicFont(56F);
         }
 
-        private void WireClickEvents(Control parent)
-        {
-            parent.Click += (s, e) => HandleUserAction();
-            parent.MouseClick += (s, e) => HandleUserAction();
-
-            foreach (Control control in parent.Controls)
-            {
-                control.Click += (s, e) => HandleUserAction();
-                control.MouseClick += (s, e) => HandleUserAction();
-                if (control.HasChildren)
-                {
-                    WireClickEvents(control);
-                }
-            }
-        }
 
         private void LoadingForm_Load(object? sender, EventArgs e)
         {
             ApplyCustomFonts();
             CenterControls();
             loadingTimer.Start();
+            AudioManager.Instance.PlayAmbientLoop();
         }
 
         private void LoadingForm_Resize(object? sender, EventArgs e)
@@ -178,6 +173,7 @@ namespace StayOnTheLine
 
         private void HandleUserAction()
         {
+            AudioManager.Instance.PlayFrequencyBlip();
             if (!_loadingManager.IsCompleted)
             {
                 // Speed up loading if player clicks or presses key during loading
@@ -195,15 +191,19 @@ namespace StayOnTheLine
 
             loadingTimer.Stop();
             blinkTimer.Stop();
+            lblPrompt.Visible = false;
 
-            this.Hide();
-
+            // Pre-instantiate and display MainForm first so the display never reveals the desktop
             var mainForm = new MainForm();
             mainForm.FormClosed += (s, e) => this.Close();
             mainForm.Show();
             mainForm.BringToFront();
             mainForm.Activate();
             mainForm.Focus();
+            mainForm.Update();
+
+            // Seamlessly hide loading form now that MainForm is already visible
+            this.Hide();
         }
 
         private void lblTitleStayOn_Click(object sender, EventArgs e)
