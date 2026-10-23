@@ -11,7 +11,18 @@ using System.Windows.Forms;
 
 namespace StayOnTheLine
 {
-    public partial class Tutorial : Form
+    /// <summary>
+    /// OOP Principles Demonstrated:
+    /// 1. INHERITANCE: Inherits from BaseGameForm, standardizing horror game window behavior
+    ///    (borderless, maximized, double-buffered, black background).
+    /// 2. ENCAPSULATION: Encapsulates queue-based dialogue state machine, typewriter printing,
+    ///    and speaker asset maps within private fields with controlled public/protected access.
+    /// 3. POLYMORPHISM: Overrides OnResize, OnKeyDown, and custom graphics rendering to provide dynamic,
+    ///    aspect-ratio agnostic Cover-Fit rendering (zero black lines) across all screen resolutions.
+    /// 4. ABSTRACTION: Communicates completion through DialogResult, allowing
+    ///    MainForm to coordinate the subsequent shift gameplay without tight coupling.
+    /// </summary>
+    public partial class Tutorial : BaseGameForm
     {
         private enum CharSide { Left, Center, Right }
 
@@ -208,7 +219,7 @@ namespace StayOnTheLine
                 string assetsDir = Path.Combine(baseDir, "Assets");
                 if (!Directory.Exists(assetsDir)) continue;
 
-                foreach (string file in Directory.GetFiles(assetsDir, "*.png"))
+                foreach (string file in Directory.GetFiles(assetsDir, "*.png", SearchOption.AllDirectories))
                 {
                     string fname = Path.GetFileNameWithoutExtension(file);
 
@@ -351,34 +362,19 @@ namespace StayOnTheLine
         }
 
         // ------------------------------------------------------------------
-        //  BACKGROUND (fills the whole screen, crops the overflow)
+        //  BACKGROUND (Dynamic aspect-ratio agnostic cover fit, zero black lines)
         // ------------------------------------------------------------------
         private void UpdateBackground()
         {
-            int W = ClientSize.Width, H = ClientSize.Height;
-            if (W <= 0 || H <= 0 || originalBackground == null) return;
-
-            picBackground.SizeMode = PictureBoxSizeMode.Normal;
-
-            Image old = picBackground.Image;
-            picBackground.Image = CoverFit(originalBackground, W, H);
-            if (old != null) old.Dispose();
-        }
-
-        // Scales the image to fill W x H completely, cropping whatever overflows
-        private static Image CoverFit(Image src, int W, int H)
-        {
-            float scale = Math.Max((float)W / src.Width, (float)H / src.Height);
-            float drawW = src.Width * scale;
-            float drawH = src.Height * scale;
-
-            Bitmap result = new Bitmap(W, H);
-            using (Graphics g = Graphics.FromImage(result))
+            // Do not store a static bitmap on PictureBox to prevent aspect distortion and black letterboxing.
+            // Rendering is handled dynamically on Paint with high-quality bicubic interpolation.
+            if (picBackground.Image != null)
             {
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.DrawImage(src, (W - drawW) / 2f, (H - drawH) / 2f, drawW, drawH);
+                var old = picBackground.Image;
+                picBackground.Image = null;
+                old.Dispose();
             }
-            return result;
+            picBackground.Invalidate();
         }
 
         // ------------------------------------------------------------------
@@ -451,10 +447,40 @@ namespace StayOnTheLine
 
         private void PicBackground_Paint(object sender, PaintEventArgs e)
         {
+            Graphics g = e.Graphics;
+            int w = picBackground.Width;
+            int h = picBackground.Height;
+            if (w <= 0 || h <= 0) return;
+
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+            // 1. Dynamic Cover-Fit Background (Zero black lines, dynamically fills 100% of viewport)
+            if (originalBackground != null)
+            {
+                float scale = Math.Max((float)w / originalBackground.Width, (float)h / originalBackground.Height);
+                float drawW = originalBackground.Width * scale;
+                float drawH = originalBackground.Height * scale;
+                float drawX = (w - drawW) / 2f;
+                float drawY = (h - drawH) / 2f;
+
+                g.DrawImage(originalBackground, drawX, drawY, drawW, drawH);
+
+                // Subtle CRT edge vignette to blend cinematic immersion
+                using var vPath = new GraphicsPath();
+                vPath.AddRectangle(new Rectangle(0, 0, w, h));
+                using var pgb = new PathGradientBrush(vPath)
+                {
+                    CenterColor = Color.FromArgb(0, 0, 0, 0),
+                    SurroundColors = new[] { Color.FromArgb(90, 0, 0, 0) },
+                    FocusScales = new PointF(0.75f, 0.70f)
+                };
+                g.FillRectangle(pgb, 0, 0, w, h);
+            }
+
+            // 2. Character Sprite (Proportionally scaled, pinned to bottom of screen)
             if (characterVisible && currentCharacterImage != null && characterBounds.Width > 0 && characterBounds.Height > 0)
             {
-                e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-
                 float imgAspect = (float)currentCharacterImage.Width / currentCharacterImage.Height;
                 float boxAspect = (float)characterBounds.Width / characterBounds.Height;
                 int drawW = characterBounds.Width;
@@ -473,7 +499,7 @@ namespace StayOnTheLine
                     drawX = characterBounds.X + (characterBounds.Width - drawW) / 2;
                 }
 
-                e.Graphics.DrawImage(currentCharacterImage, drawX, drawY, drawW, drawH);
+                g.DrawImage(currentCharacterImage, drawX, drawY, drawW, drawH);
             }
         }
 
@@ -560,14 +586,9 @@ namespace StayOnTheLine
         {
             if (storyQueue.Count == 0)
             {
-                lblSpeaker.Text = "SYSTEM";
-                lblDialogue.Text = "End of current build.";
-                lblIncoming.Text = "";
-                lblArrow.Visible = false;
-                currentCharacterImage = null;
-                characterVisible = false;
-                picCharacter.Visible = false;
-                picBackground.Invalidate(true);
+                // Completed tutorial dialogue, transition cleanly to shift gameplay
+                this.DialogResult = DialogResult.OK;
+                this.Close();
                 return;
             }
 

@@ -45,7 +45,7 @@ namespace StayOnTheLine
             this.picBackground.BackColor = System.Drawing.Color.Black;
             this.picBackground.Dock = System.Windows.Forms.DockStyle.Fill;
             this.picBackground.Name = "picBackground";
-            this.picBackground.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+            this.picBackground.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Normal;
             this.picBackground.TabIndex = 0;
             this.picBackground.TabStop = false;
             // picCharacter in back, pnlDialogue on top, btnSettings on very top

@@ -178,14 +178,28 @@ namespace StayOnTheLine
 
         private void LaunchGameWithProfile(Models.OperatorProfile profile)
         {
-            MessageBox.Show(
-                this,
-                $"OPERATOR VERIFIED: {profile.OperatorName}\nSHIFT: {profile.CurrentShift}\nCALLS LOGGED: {profile.CallsLogged}\n\n[ Commencing Night Dispatch Shift... ]",
-                "Dispatch Line Connected",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            var overlay = new Controls.OperatorVerificationOverlay(profile)
+            {
+                Dock = DockStyle.Fill
+            };
 
-            OpenTutorialFlow();
+            overlay.VerificationCompleted += () =>
+            {
+                if (pbBackground.Controls.Contains(overlay))
+                {
+                    pbBackground.Controls.Remove(overlay);
+                }
+                else if (this.Controls.Contains(overlay))
+                {
+                    this.Controls.Remove(overlay);
+                }
+                overlay.Dispose();
+                OpenTutorialFlow();
+            };
+
+            pbBackground.Controls.Add(overlay);
+            overlay.BringToFront();
+            overlay.Focus();
         }
 
         private void pbBackground_Click(object sender, EventArgs e)
