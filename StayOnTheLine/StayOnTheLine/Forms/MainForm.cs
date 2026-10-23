@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -16,10 +16,21 @@ namespace StayOnTheLine
         Label[] menu;
         int selected = -1;
 
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED: smooth flicker-free double buffering
+                return cp;
+            }
+        }
+
         public MainForm()
         {
             InitializeComponent();
-            menu = new[] { lblNewShift, lblContinue, lblQuit };
+            DoubleBuffered = true;
+            menu = new[] { lblNewShift, lblContinue, lblSettings, lblQuit };
             Resize += (s, e) => AdjustLayout();
         }
 
@@ -39,6 +50,31 @@ namespace StayOnTheLine
 
             lblPlaceholder.Visible = pbBackground.Image == null;
             AdjustLayout();
+            AudioManager.Instance.PlayAmbientLoop();
+            pbBackground.Paint += (s, ev) => DrawVignetteOverlay(ev.Graphics, pbBackground.ClientRectangle);
+        }
+
+        private static void DrawVignetteOverlay(Graphics g, Rectangle rect)
+        {
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            // 1. Subtle Analog CRT Vignette (shadowing the 4 corners of the dispatcher room)
+            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                path.AddRectangle(rect);
+                using var pgb = new System.Drawing.Drawing2D.PathGradientBrush(path);
+                pgb.CenterColor = Color.FromArgb(0, 0, 0, 0);
+                pgb.SurroundColors = new[] { Color.FromArgb(170, 0, 0, 0) };
+                pgb.FocusScales = new PointF(0.55f, 0.45f);
+                g.FillRectangle(pgb, rect);
+            }
+
+            // 2. Subtle Analog Scanlines
+            using var scanPen = new Pen(Color.FromArgb(12, 0, 0, 0), 1f);
+            for (int y = 0; y < rect.Height; y += 4)
+            {
+                g.DrawLine(scanPen, 0, y, rect.Width, y);
+            }
         }
 
         // ---- Mouse ------------------------------------------------------
@@ -61,6 +97,10 @@ namespace StayOnTheLine
         // ---- Logic ------------------------------------------------------
         void Select(int index)
         {
+            if (index >= 0 && index != selected)
+            {
+                AudioManager.Instance.PlayFrequencyBlip();
+            }
             selected = index;
             for (int i = 0; i < menu.Length; i++)
                 menu[i].ForeColor = i == selected ? HoverColor
@@ -71,10 +111,67 @@ namespace StayOnTheLine
         {
             switch (index)
             {
-                case 0: MessageBox.Show("TODO: start new shift"); break;
-                case 1: MessageBox.Show("TODO: load saved shift"); break;
-                case 2: Application.Exit(); break;
+                case 0: // New Shift
+                    StartNewShiftFlow();
+                    break;
+
+                case 1: // Continue
+                    ContinueShiftFlow();
+                    break;
+
+                case 2: // Settings
+                    OpenSettingsFlow();
+                    break;
+
+                case 3: // Quit
+                    Application.Exit();
+                    break;
             }
+        }
+
+        private void OpenSettingsFlow()
+        {
+            using var settingsForm = new Forms.SettingsForm();
+            settingsForm.ShowDialog(this);
+        }
+
+        private void StartNewShiftFlow()
+        {
+            using var archiveForm = new Forms.OperatorArchiveForm(SaveManager.Instance, isNewShiftMode: true);
+            if (archiveForm.ShowDialog(this) == DialogResult.OK && archiveForm.SelectedProfile != null)
+            {
+                LaunchGameWithProfile(archiveForm.SelectedProfile);
+            }
+        }
+
+        private void ContinueShiftFlow()
+        {
+            if (!SaveManager.Instance.HasAnySaves())
+            {
+                MessageBox.Show(
+                    this,
+                    "NO ARCHIVED OPERATORS FOUND.\n\nPlease select 'NEW SHIFT' to begin your first night shift assignment.",
+                    "Recovered Operator Archive",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            using var archiveForm = new Forms.OperatorArchiveForm(SaveManager.Instance, isNewShiftMode: false);
+            if (archiveForm.ShowDialog(this) == DialogResult.OK && archiveForm.SelectedProfile != null)
+            {
+                LaunchGameWithProfile(archiveForm.SelectedProfile);
+            }
+        }
+
+        private void LaunchGameWithProfile(Models.OperatorProfile profile)
+        {
+            MessageBox.Show(
+                this,
+                $"OPERATOR VERIFIED: {profile.OperatorName}\nSHIFT: {profile.CurrentShift}\nCALLS LOGGED: {profile.CallsLogged}\n\n[ Commencing Night Dispatch Shift... ]",
+                "Dispatch Line Connected",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
 
         private void pbBackground_Click(object sender, EventArgs e)
@@ -158,7 +255,11 @@ namespace StayOnTheLine
             lblContinue.Location = new Point(blockX, lblNewShift.Bottom + menuSpacing);
 
             lblQuit.Font = menuFont;
-            lblQuit.Location = new Point(blockX, lblContinue.Bottom + menuSpacing);
+            lblSettings.Font = menuFont;
+            lblSettings.Location = new Point(blockX, lblContinue.Bottom + menuSpacing);
+
+            lblQuit.Font = menuFont;
+            lblQuit.Location = new Point(blockX, lblSettings.Bottom + menuSpacing);
         }
 
         private void lblKicker_Click(object sender, EventArgs e)
