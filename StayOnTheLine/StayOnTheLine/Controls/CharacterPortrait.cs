@@ -129,6 +129,20 @@ namespace StayOnTheLine.Controls
             if (_frame != null) e.Graphics.DrawImageUnscaled(_frame, 0, 0);
         }
 
+        // The character is scenery: mouse input falls through to whatever she stands in front of
+        // (e.g. the response options), so an overlapping sprite never swallows a click.
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_NCHITTEST = 0x0084;
+            const int HTTRANSPARENT = -1;
+            if (m.Msg == WM_NCHITTEST)
+            {
+                m.Result = (IntPtr)HTTRANSPARENT;
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing) _frame?.Dispose();
