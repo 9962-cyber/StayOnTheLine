@@ -18,6 +18,7 @@ namespace StayOnTheLine.Systems
         public string ShiftTitle => "SHIFT 01 — TRAINING PROTOCOL";
         public string SupervisorName => "KRISHA NARCISO";
         public int InitialUnits => 3;
+        public bool HasTutorialGuidance => true;
 
         public List<EmergencyCall> GenerateCalls()
         {
@@ -140,11 +141,17 @@ namespace StayOnTheLine.Systems
 
         public string GetDebriefMessage(ShiftState state)
         {
+            if (state.CallsLogged < 3)
+            {
+                return "TRAINING SHIFT INCOMPLETE.\n\nActive emergency lines remain pending on the switchboard. Complete all incoming trunk line calls before official submission.";
+            }
+
             if (state.CluesFound >= 1)
             {
-                return "TRAINING SHIFT COMPLETED WITH DISTINCTION.\n\nAll emergency lines resolved. Critical anomalies flagged for Shift Trainer Ysa.\nPromotion to Shift 2 authorized.";
+                return "TRAINING SHIFT COMPLETED WITH DISTINCTION.\n\nYour report contains an incident that did not occur.\nDo not speak to the day shift.\n\nShift 02 clearance authorized.";
             }
-            return "TRAINING SHIFT COMPLETED.\n\nBasic protocol standards met. Shift 2 access granted.";
+
+            return "TRAINING SHIFT COMPLETED.\n\nStandard protocol guidelines satisfied. Shift 02 clearance authorized.";
         }
     }
 }

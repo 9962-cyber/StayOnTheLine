@@ -66,11 +66,11 @@ namespace StayOnTheLine
         private Dictionary<string, CharSide> characterSide =
             new Dictionary<string, CharSide>(StringComparer.OrdinalIgnoreCase)
         {
-            { "KRISHA", CharSide.Center },
-            { "CHARM",  CharSide.Right  },
-            { "YSA",    CharSide.Left   },
-            { "STEF",   CharSide.Left   },
-            { "CHLOE",  CharSide.Center }
+            { "KRISHA",  CharSide.Left   },
+            { "CHARM",   CharSide.Right  },
+            { "CHARMEE", CharSide.Right  },
+            { "STEF",    CharSide.Left   },
+            { "CHLOE",   CharSide.Center }
         };
         private CharSide currentSide = CharSide.Center;
         private Image? currentCharacterImage;
@@ -334,7 +334,13 @@ namespace StayOnTheLine
                 return null;
             }
 
-            if (characterExpressions.TryGetValue(speaker, out var expMap))
+            string lookupSpeaker = speaker;
+            if (string.Equals(speaker, "CHARMEE", StringComparison.OrdinalIgnoreCase))
+            {
+                lookupSpeaker = "CHARM";
+            }
+
+            if (characterExpressions.TryGetValue(lookupSpeaker, out var expMap))
             {
                 if (!string.IsNullOrEmpty(expression))
                 {
@@ -410,7 +416,8 @@ namespace StayOnTheLine
             // Fonts
             SetFont(lblSpeaker, 15f * s);
             SetFont(lblIncoming, 11f * s);
-            SetFont(lblDialogue, 22f * s);
+            float baseDialogue = (!string.IsNullOrEmpty(currentFullText) && currentFullText.Length > 120) ? 17.5f : 22f;
+            SetFont(lblDialogue, baseDialogue * s);
             SetFont(lblArrow, 14f * s);
 
             // Inside the box
@@ -558,46 +565,49 @@ namespace StayOnTheLine
 
         private void LoadStory()
         {
-            storyQueue.Enqueue(new DialogueLine(_playerName, "Your application was approved three days ago."));
             storyQueue.Enqueue(new DialogueLine("NARRATION", "Tonight is your first overnight shift at the emergency dispatch center."));
             storyQueue.Enqueue(new DialogueLine("NARRATION", "The building looks older than it did during your interview. Fluorescent lights buzz overhead. A wall clock ticks above a row of desks, and the CRT monitors cast a faint phosphor glow across the room."));
             storyQueue.Enqueue(new DialogueLine("NARRATION", "A printer rattles somewhere behind you. On the wall is a faded slogan: EVERY CALL MATTERS, EVERY SECOND COUNTS."));
 
-            // 1. Shift Trainer Ysa conducts shift briefing
-            storyQueue.Enqueue(new DialogueLine("YSA", "Attention, new dispatcher. I am Ysa, your shift trainer.", "serious", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("YSA", "Tonight begins your provisional training protocol. The calls you receive tonight are genuine emergency trunk lines.", "talking", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("YSA", "Follow procedure strictly: verify the reported address, inspect the station incident logs, and never dispatch our limited patrol units without reasonable justification.", "serious", CharSide.Left));
+            // Krisha approaches workstation
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[A woman approaches your desk carrying a folder.]"));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "First night?", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Don't worry. The phones look intimidating, but most people just need someone to listen.", "smile", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "I'm Krisha Narciso. I'll be training you tonight.", "talking", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "I've worked here long enough to know two things. One, the coffee is terrible. Two, never trust a quiet night.", "talking", CharSide.Left));
 
-            // 2. Neighboring console Charm chimes in
-            storyQueue.Enqueue(new DialogueLine("CHARM", "Translation: don't panic, don't guess, and don't make Ysa's paperwork worse than it already is.", "giggle", CharSide.Right));
+            // Charmee from neighboring console
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[A cheerful voice comes from the neighboring console.]"));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Hey! Don't scare the newbie before they even get their headset on.", "giggle", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Charmee turns her chair toward the player and smiles.]"));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "I'm Charmee Cantones. Your neighboring console, unofficial coffee supplier, and the person you should ask if you need anything.", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Anything?", "concerned", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Almost anything.", "giggle", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "That's what worries me.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "See? She's already telling you stories about me.", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "I'm telling them to keep an eye on you.", "concerned", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Same thing!", "giggle", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Charmee laughs and turns back to her computer.]"));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "She's been here for years. She knows everyone, remembers everyone's birthday, and somehow always knows when someone needs coffee.", "talking", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "She's also very good at making a serious situation sound less serious than it is.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "I heard that!", "crashout", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "You were supposed to.", "smile", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Krisha hands the player a training folder.]"));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "All right. Jokes aside, listen carefully.", "serious", CharSide.Left));
 
-            // 3. Trainer Ysa disciplines Charm
-            storyQueue.Enqueue(new DialogueLine("YSA", "Villareal. Headset on. Back to your line.", "annoyed", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "Yes, ma'am! Just offering official morale support to the trainee.", "smile", CharSide.Right));
+            // Three Basic Rules
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number one: verify the address before sending a unit, whenever it's safe to do so.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number two: check the incident log if something doesn't look right.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "An incident log is the record of a call: when it came in, what was reported, where it happened, and what actions were taken. If the information doesn't match, don't ignore it. Check the record and make a note of the discrepancy.", "talking", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number three: don't panic just because the caller does.", "talking", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "A frightened person may struggle to explain what's happening. Stay calm, ask clear questions, and take immediate danger seriously.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "And rule number four: don't let Krisha catch you sleeping.", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "There is no rule number four.", "concerned", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "There is if you value your employment.", "serious", CharSide.Right));
 
-            // 4. Ysa exits to supervisory office; Krisha Narciso steps over as Shift Supervisor
-            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Trainer Ysa heads into the administrative office. Night Desk Supervisor Krisha Narciso steps over to stand beside your workstation.]"));
-
-            // 5. Krisha Narciso - Shift Supervisor introduction & banter
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "First night? Don't let Ysa's strict tone intimidate you. The switchboards look overwhelming, but most callers just need someone calm to listen.", "smile", CharSide.Center));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "I'm Krisha Narciso, your shift supervisor. I'll be monitoring your console feed tonight and evaluating your performance.", "talking", CharSide.Center));
-
-            storyQueue.Enqueue(new DialogueLine("CHARM", "And I'm Charm Villareal! Your neighboring console, unofficial coffee supplier, and resident emergency backup.", "smile", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Unofficial coffee supplier?", "concerned", CharSide.Center));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "Hey, caffeine keeps this city safe.", "giggle", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Just make sure you don't spill it on the trunk terminals.", "smile", CharSide.Center));
-
-            // 6. Krisha's 3 Core Rules
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "All right. Jokes aside, listen carefully. Rule number one: verify the address before sending a unit, whenever it's safe to do so.", "serious", CharSide.Center));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number two: check the incident log if something doesn't look right. Discrepancies matter.", "serious", CharSide.Center));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number three: don't panic just because the caller does. A frightened person may struggle to explain what's happening.", "talking", CharSide.Center));
-
-            storyQueue.Enqueue(new DialogueLine("CHARM", "And rule number four: don't let Ysa catch you sleeping.", "smile", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "There is no rule number four.", "concerned", CharSide.Center));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "There is if you value your employment.", "serious", CharSide.Right));
-
-            // 7. Telephone rings -> transition to computer terminal
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "[A telephone rings across the room on Trunk Line 01. Charm immediately turns back to her console.] That's our first incoming emergency line. Head to your terminal and answer it.", "serious", CharSide.Center));
+            // Telephone rings -> Shift starts
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[A telephone rings across the room. Charmee immediately turns back to her console.]"));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "That's your first lesson. Let's see how you do.", "serious", CharSide.Left));
         }
 
         private void DisplayNextLine()
@@ -629,36 +639,42 @@ namespace StayOnTheLine
                 UpdateBackground();
             }
 
-            if (string.Equals(line.Speaker, "NARRATION", StringComparison.OrdinalIgnoreCase))
+            bool isNarration = string.Equals(line.Speaker, "NARRATION", StringComparison.OrdinalIgnoreCase);
+
+            if (isNarration)
             {
-                lblSpeaker.Text = "DISPATCH BRIEFING";
-                lblIncoming.Text = "PROTOCOL LOG";
-            }
-            else if (string.Equals(line.Speaker, "Y/N", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(line.Speaker, _playerName, StringComparison.OrdinalIgnoreCase))
-            {
-                lblSpeaker.Text = _playerName;
-                lblIncoming.Text = "TRAINEE DISPATCHER";
-            }
-            else if (string.Equals(line.Speaker, "KRISHA", StringComparison.OrdinalIgnoreCase))
-            {
-                lblSpeaker.Text = "KRISHA NARCISO";
-                lblIncoming.Text = "NIGHT DESK SUPERVISOR";
-            }
-            else if (string.Equals(line.Speaker, "YSA", StringComparison.OrdinalIgnoreCase))
-            {
-                lblSpeaker.Text = "YSA";
-                lblIncoming.Text = "SHIFT TRAINER";
-            }
-            else if (string.Equals(line.Speaker, "CHARM", StringComparison.OrdinalIgnoreCase))
-            {
-                lblSpeaker.Text = "CHARM VILLAREAL";
-                lblIncoming.Text = "OPERATOR / CONSOLE 03";
+                lblSpeaker.Text = "";
+                lblIncoming.Text = "";
+                lblSpeaker.Visible = false;
+                lblIncoming.Visible = false;
             }
             else
             {
-                lblSpeaker.Text = line.Speaker;
-                lblIncoming.Text = "INCOMING / VOICE";
+                lblSpeaker.Visible = true;
+                lblIncoming.Visible = true;
+
+                if (string.Equals(line.Speaker, "Y/N", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(line.Speaker, _playerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    lblSpeaker.Text = _playerName;
+                    lblIncoming.Text = "TRAINEE DISPATCHER";
+                }
+                else if (string.Equals(line.Speaker, "KRISHA", StringComparison.OrdinalIgnoreCase))
+                {
+                    lblSpeaker.Text = "KRISHA NARCISO";
+                    lblIncoming.Text = "SHIFT SUPERVISOR";
+                }
+                else if (string.Equals(line.Speaker, "CHARM", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(line.Speaker, "CHARMEE", StringComparison.OrdinalIgnoreCase))
+                {
+                    lblSpeaker.Text = "CHARMEE CANTONES";
+                    lblIncoming.Text = "OPERATOR / CONSOLE 03";
+                }
+                else
+                {
+                    lblSpeaker.Text = line.Speaker;
+                    lblIncoming.Text = "INCOMING / VOICE";
+                }
             }
 
             // Show the speaking character with their expression.
@@ -700,6 +716,16 @@ namespace StayOnTheLine
             currentFullText = line.Text;
             charIndex = 0;
             lblDialogue.Text = "";
+            float s = this.ClientSize.Height / 1080f;
+            float baseSize = line.Text.Length > 120 ? 17.5f : 22f;
+            SetFont(lblDialogue, baseSize * s);
+
+            int pad = (int)(40 * s);
+            int textTop = isNarration ? (int)(28 * s) : (int)(70 * s);
+            lblDialogue.SetBounds(pad, textTop,
+                pnlDialogue.Width - pad * 2 - (int)(30 * s),
+                pnlDialogue.Height - textTop - (int)(20 * s));
+
             lblArrow.Visible = false;
             isTyping = true;
             typingTimer.Start();

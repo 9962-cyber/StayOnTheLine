@@ -187,7 +187,8 @@ namespace StayOnTheLine
 
         private void OpenShiftFlow(Models.OperatorProfile profile, Controls.OperatorVerificationOverlay? overlay = null)
         {
-            var shiftForm = new Forms.Shift1Form(profile);
+            var scenario = Systems.ShiftScenarioFactory.Create(profile.CurrentShift);
+            var shiftForm = new Forms.ShiftPlayForm(profile, scenario);
 
             shiftForm.Shown += (s, e) =>
             {

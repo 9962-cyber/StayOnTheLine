@@ -14,6 +14,7 @@ namespace StayOnTheLine.Models
         string ShiftTitle { get; }
         string SupervisorName { get; }
         int InitialUnits { get; }
+        bool HasTutorialGuidance { get; }
         List<EmergencyCall> GenerateCalls();
         string GetDebriefMessage(ShiftState state);
     }
