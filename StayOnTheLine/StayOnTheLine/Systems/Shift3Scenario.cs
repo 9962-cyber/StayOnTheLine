@@ -13,11 +13,11 @@ namespace StayOnTheLine.Systems
     {
         public int ShiftNumber => 3;
         public string ShiftTitle => "SHIFT 03 – RECORDS";
-        public string SupervisorName => "KRISHA";
+        public string SupervisorName => "YSA";
         public int InitialUnits => 2;
         public bool HasTutorialGuidance => false;
 
-        // Krisha's shift briefing; a short "another shift" scene plays before the book opens
+        // Ysa's shift briefing; a short "another shift" scene plays before the book opens
         public ShiftBriefing Briefing => new(
             "Three",
             "23:00 – 03:00",

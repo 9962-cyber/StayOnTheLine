@@ -478,7 +478,7 @@ namespace StayOnTheLine.Forms
         // ──────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Shift Briefing scene (after Stef's thread): Krisha and Charm at the desk.
+        /// Shift Briefing scene (after Steff's thread): Ysa and Charm at the desk.
         /// The first call only starts ringing once the scene is over.
         /// </summary>
         private ActionChoice Shift3BriefingChoice() => new ActionChoice
@@ -496,8 +496,8 @@ namespace StayOnTheLine.Forms
                     new BriefingSceneLine("", "Shift Briefing"),
                     new BriefingSceneLine("", "SYSTEM: SHIFT 3 STARTED."),
                     new BriefingSceneLine("", "SYSTEM: AVAILABLE UNITS: 2."),
-                    new BriefingSceneLine("KRISHA", "We have fewer units available tonight. Prioritize immediate danger and make sure your actions are documented.", "krisha_serious", "SHIFT SUPERVISOR"),
-                    new BriefingSceneLine("KRISHA", "Any record irregularities must be reported through the proper channel. Do not make unauthorized changes.", "krisha_talking", "SHIFT SUPERVISOR"),
+                    new BriefingSceneLine("YSA", "We have fewer units available tonight. Prioritize immediate danger and make sure your actions are documented.", "ysa_serious", "SHIFT SUPERVISOR"),
+                    new BriefingSceneLine("YSA", "Any record irregularities must be reported through the proper channel. Do not make unauthorized changes.", "ysa_talking", "SHIFT SUPERVISOR"),
                     new BriefingSceneLine("CHARM", "Two units. That's going to be a long night.", "charm_serious", "NEIGHBORING CONSOLE"),
                     new BriefingSceneLine("CHARM", "Well, at least we have each other.", "charm_smile", "NEIGHBORING CONSOLE")
                 }, () =>

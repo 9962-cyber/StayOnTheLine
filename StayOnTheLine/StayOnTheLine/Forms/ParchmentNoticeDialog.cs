@@ -62,8 +62,8 @@ namespace StayOnTheLine.Forms
                 Text = header,
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(214, 88, 70),
-                Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold),
+                ForeColor = _isWarning ? Color.FromArgb(214, 96, 80) : Color.FromArgb(150, 150, 146),
+                Font = FontManager.GetSmallCapsFont(10.5F),
                 Location = new Point(EdgeMargin, 52)
             };
 
@@ -98,27 +98,22 @@ namespace StayOnTheLine.Forms
             int bodyH = TextRenderer.MeasureText(body, bodyFont, new Size(textW - 60, int.MaxValue), TextFormatFlags.WordBreak).Height + 44;
             var pnlCard = new Panel
             {
-                BackColor = Color.FromArgb(22, 22, 22),
+                BackColor = Color.FromArgb(10, 10, 10),
                 Bounds = new Rectangle(EdgeMargin, 136, textW, bodyH)
             };
             var lblBody = new Label
             {
                 Text = body,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(222, 216, 206),
+                ForeColor = Color.FromArgb(226, 222, 214),
                 Font = bodyFont,
-                Bounds = new Rectangle(18, 14, textW - 28, bodyH - 20)
+                Bounds = new Rectangle(0, 18, textW, bodyH - 20)
             };
             pnlCard.Controls.Add(lblBody);
             pnlCard.Paint += (s, e) =>
             {
-                var rect = pnlCard.ClientRectangle;
-                rect.Width -= 1;
-                rect.Height -= 1;
-                using var pen = new Pen(Color.FromArgb(70, 70, 70), 1);
-                e.Graphics.DrawRectangle(pen, rect);
-                using var spine = new SolidBrush(_isWarning ? Color.FromArgb(170, 44, 30) : Color.FromArgb(200, 200, 196));
-                e.Graphics.FillRectangle(spine, 0, 0, 5, pnlCard.Height);
+                using var divider = new Pen(Color.FromArgb(90, 255, 255, 255), 1);
+                e.Graphics.DrawLine(divider, 0, 0, pnlCard.Width, 0);
             };
 
             int btnY = pnlCard.Bottom + 28;
@@ -168,29 +163,31 @@ namespace StayOnTheLine.Forms
 
         private Label MakeButton(string text, bool primary)
         {
-            Color bg = primary
-                ? (_isWarning ? Color.FromArgb(120, 32, 20) : Color.FromArgb(236, 232, 224))
-                : Color.FromArgb(18, 18, 18);
-            Color bgHover = primary
-                ? (_isWarning ? Color.FromArgb(160, 38, 24) : Color.White)
-                : Color.FromArgb(52, 52, 52);
-            Color fg = primary ? (_isWarning ? Color.FromArgb(250, 244, 230) : Color.FromArgb(14, 14, 14)) : Color.FromArgb(220, 216, 208);
-            Color fgHover = primary ? (_isWarning ? Color.White : Color.Black) : Color.White;
+            Color border = primary
+                ? (_isWarning ? Color.FromArgb(214, 96, 80) : Color.FromArgb(235, 235, 235))
+                : Color.FromArgb(140, 140, 136);
+            Color bg = Color.FromArgb(14, 14, 14);
+            Color bgHover = _isWarning && primary ? Color.FromArgb(70, 24, 18) : Color.FromArgb(58, 58, 58);
+            Color fg = primary ? Color.White : Color.FromArgb(200, 198, 192);
 
             var btn = new Label
             {
                 Text = text,
                 BackColor = bg,
                 ForeColor = fg,
-                BorderStyle = BorderStyle.FixedSingle,
-                Font = FontManager.GetSmallCapsFont(primary ? 12F : 11.5F, FontStyle.Bold),
+                Font = FontManager.GetSmallCapsFont(12F),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
+            };
+            btn.Paint += (s, e) =>
+            {
+                using var pen = new Pen(border, 1.5f);
+                e.Graphics.DrawRectangle(pen, 1, 1, btn.Width - 3, btn.Height - 3);
             };
             btn.MouseEnter += (s, e) =>
             {
                 btn.BackColor = bgHover;
-                btn.ForeColor = fgHover;
+                btn.ForeColor = Color.White;
                 AudioManager.Instance.PlayFrequencyBlip();
             };
             btn.MouseLeave += (s, e) =>

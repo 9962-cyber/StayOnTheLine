@@ -3316,212 +3316,180 @@ namespace StayOnTheLine.Forms
                     }
                 }
 
-                // Header Typography on Parchment
-                int contentX = paperX + (int)(24 * scale);
-                int contentW = paperW - (int)(48 * scale);
-                int currY = paperTop + (int)(8 * scale);
+                // ── Report contents: room to breathe, nothing squeezed into a side column ──
+                int contentX = paperX + (int)(34 * scale);
+                int contentW = paperW - (int)(68 * scale);
+                int currY = paperTop + (int)(10 * scale);
 
-                // Confidential Subheading
-                using var fontSub = FontManager.GetSmallCapsFont(10.5f * scale, FontStyle.Regular);
-                var subCol = Color.FromArgb(105, 90, 75);
-                var subRect = new Rectangle(contentX, currY, contentW, (int)(20 * scale));
-                TextRenderer.DrawText(g, "Municipal Emergency Services · Confidential", fontSub, subRect, subCol,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
-                currY += (int)(22 * scale);
+                var inkDark = Color.FromArgb(28, 22, 16);
+                var inkMuted = Color.FromArgb(112, 96, 80);
+                var ruleCol = Color.FromArgb(150, 130, 110);
+                const TextFormatFlags oneLine = TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
 
-                // "END OF SHIFT" Main Title
+                using var fontSub = FontManager.GetSmallCapsFont(10f * scale);
+                TextRenderer.DrawText(g, "Municipal Emergency Services · Confidential", fontSub,
+                    new Rectangle(contentX, currY, contentW, (int)(20 * scale)), inkMuted, TextFormatFlags.HorizontalCenter | oneLine);
+                currY += (int)(20 * scale);
+
                 using var fontTitle = FontManager.GetSmallCapsFont(23f * scale, FontStyle.Bold);
-                var titleCol = Color.FromArgb(24, 20, 16);
-                var titleRect = new Rectangle(contentX, currY, contentW, (int)(38 * scale));
-                TextRenderer.DrawText(g, "END OF SHIFT REPORT", fontTitle, titleRect, titleCol,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
+                TextRenderer.DrawText(g, "END OF SHIFT REPORT", fontTitle,
+                    new Rectangle(contentX, currY, contentW, (int)(40 * scale)), inkDark, TextFormatFlags.HorizontalCenter | oneLine);
                 currY += (int)(40 * scale);
 
-                // Employee & Date Subheader
-                using var fontEmp = FontManager.GetSmallCapsFont(11.5f * scale, FontStyle.Regular);
-                var empCol = Color.FromArgb(80, 70, 60);
-                var empRect = new Rectangle(contentX, currY, contentW, (int)(22 * scale));
-                TextRenderer.DrawText(g, $"Employee: {Profile.OperatorName.ToUpperInvariant()} · November 9, 1998 · Station 04", fontEmp, empRect, empCol,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
+                using var fontEmp = FontManager.GetSmallCapsFont(11f * scale);
+                TextRenderer.DrawText(g, $"Employee: {Profile.OperatorName.ToUpperInvariant()} · November 9, 1998 · Station 04", fontEmp,
+                    new Rectangle(contentX, currY, contentW, (int)(22 * scale)), Color.FromArgb(80, 70, 60), TextFormatFlags.HorizontalCenter | oneLine);
                 currY += (int)(30 * scale);
 
-                // The 2x3 Metric Table Grid
-                int gridX = contentX;
-                int gridY = currY;
-                int gridW = contentW;
-                int gridH = (int)(158 * scale);
-                int colW = gridW / 2;
-                int rowH = gridH / 3;
+                using var rulePen = new Pen(ruleCol, Math.Max(1f, 1.2f * scale));
+                using var hairPen = new Pen(Color.FromArgb(110, ruleCol), Math.Max(1f, 1f * scale));
+                g.DrawLine(rulePen, contentX, currY, contentX + contentW, currY);
+                currY += (int)(12 * scale);
 
-                using var gridPen = new Pen(Color.FromArgb(150, 130, 110), 1.5f * scale);
-                using var cellBgBrush = new SolidBrush(Color.FromArgb(110, 245, 237, 218));
-                g.FillRectangle(cellBgBrush, gridX, gridY, gridW, gridH);
-                g.DrawRectangle(gridPen, gridX, gridY, gridW, gridH);
-
-                // Grid lines
-                g.DrawLine(gridPen, gridX + colW, gridY, gridX + colW, gridY + gridH);
-                g.DrawLine(gridPen, gridX, gridY + rowH, gridX + gridW, gridY + rowH);
-                g.DrawLine(gridPen, gridX, gridY + rowH * 2, gridX + gridW, gridY + rowH * 2);
-
-                using var fontMetricLabel = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Regular);
-                using var fontMetricVal = FontManager.GetSmallCapsFont(14.5f * scale, FontStyle.Bold);
-                var labelCol = Color.FromArgb(110, 95, 80);
-                var valCol = Color.FromArgb(24, 20, 16);
-
-                void DrawCell(int r, int c, string label, string val)
-                {
-                    int cx = gridX + c * colW + (int)(12 * scale);
-                    int cy = gridY + r * rowH + (int)(6 * scale);
-                    var rLabel = new Rectangle(cx, cy, colW - (int)(24 * scale), (int)(16 * scale));
-                    var rVal = new Rectangle(cx, cy + (int)(17 * scale), colW - (int)(24 * scale), rowH - (int)(25 * scale));
-                    TextRenderer.DrawText(g, label, fontMetricLabel, rLabel, labelCol, TextFormatFlags.Left | TextFormatFlags.NoPrefix);
-                    TextRenderer.DrawText(g, val, fontMetricVal, rVal, valCol, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-                }
-
+                // Stats: 3 x 2, open layout with hairlines
                 int totalClues = 0;
                 foreach (var c in _calls) { if (c.HasDiscrepancy) totalClues++; }
                 if (totalClues == 0) totalClues = 1;
 
-                DrawCell(0, 0, "Calls handled", $"{callsHandled:D2} / {_calls.Count:D2}");
-                DrawCell(0, 1, "Correct emergency", $"{callsHandled:D2} / {_calls.Count:D2}");
-                DrawCell(1, 0, "Protocol errors", $"{State.Errors:D2}");
-                DrawCell(1, 1, "Units remaining", $"{State.AvailableUnits:D2} / {Scenario.InitialUnits:D2}");
-                DrawCell(2, 0, "Caller trust", $"{avgTrust}%");
-                DrawCell(2, 1, "Evidence found", $"{State.CluesFound:D2} / {totalClues:D2}");
+                var stats = new (string Label, string Value)[]
+                {
+                    ("Calls handled", $"{callsHandled:D2} / {_calls.Count:D2}"),
+                    ("Units remaining", $"{State.AvailableUnits:D2} / {Scenario.InitialUnits:D2}"),
+                    ("Evidence found", $"{State.CluesFound:D2} / {totalClues:D2}"),
+                    ("Protocol errors", $"{State.Errors:D2}"),
+                    ("Caller trust", $"{avgTrust}%"),
+                    ("Shift", $"{Scenario.ShiftNumber:D2}")
+                };
+                int statColW = contentW / 3;
+                int statRowH = (int)(52 * scale);
+                using var fontStatLabel = FontManager.GetSmallCapsFont(9f * scale);
+                using var fontStatValue = FontManager.GetSmallCapsFont(17f * scale, FontStyle.Bold);
+                for (int i = 0; i < stats.Length; i++)
+                {
+                    int col = i % 3, row = i / 3;
+                    int sx = contentX + col * statColW + (col == 0 ? 0 : (int)(14 * scale));
+                    int sy = currY + row * statRowH;
+                    TextRenderer.DrawText(g, stats[i].Label, fontStatLabel, new Rectangle(sx, sy, statColW, (int)(16 * scale)), inkMuted, TextFormatFlags.Left | oneLine);
+                    TextRenderer.DrawText(g, stats[i].Value, fontStatValue, new Rectangle(sx, sy + (int)(16 * scale), statColW, (int)(30 * scale)), inkDark, TextFormatFlags.Left | oneLine);
+                }
+                for (int col = 1; col < 3; col++)
+                {
+                    int lx = contentX + col * statColW;
+                    g.DrawLine(hairPen, lx, currY + (int)(2 * scale), lx, currY + statRowH * 2 - (int)(8 * scale));
+                }
+                g.DrawLine(hairPen, contentX, currY + statRowH - (int)(4 * scale), contentX + contentW, currY + statRowH - (int)(4 * scale));
+                currY += statRowH * 2;
+                g.DrawLine(rulePen, contentX, currY, contentX + contentW, currY);
+                currY += (int)(16 * scale);
 
-                currY += gridH + (int)(20 * scale);
+                // Supervisor note: heading + headline beside the stamp, the rest full width below
+                string supervisorNote = Scenario.GetDebriefMessage(State);
+                var noteLines = supervisorNote.Replace("\r", "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+                string headline = noteLines.Count > 0 ? noteLines[0] : string.Empty;
 
-                // Supervisor Note Title & Stamp Row
-                using var fontNoteHeader = FontManager.GetSmallCapsFont(11.5f * scale, FontStyle.Bold);
-                var noteHeadCol = Color.FromArgb(46, 38, 30);
-                var rNoteHead = new Rectangle(contentX, currY, (int)(contentW * 0.60f), (int)(20 * scale));
-                TextRenderer.DrawText(g, "Supervisor note", fontNoteHeader, rNoteHead, noteHeadCol, TextFormatFlags.Left);
+                int stampW = (int)(150 * scale);
+                int stampH = (int)(44 * scale);
+                int stampX = contentX + contentW - stampW;
+                int stampY = currY;
 
-                // Angled Red Rubber Stamp (renders cleanly via GDI+ DrawString)
-                int stampW = (int)(168 * scale);
-                int stampH = (int)(46 * scale);
-                int stampX = contentX + contentW - stampW - (int)(6 * scale);
-                int stampY = currY - (int)(4 * scale);
+                using var fontNoteHeader = FontManager.GetSmallCapsFont(10f * scale, FontStyle.Bold);
+                TextRenderer.DrawText(g, "Supervisor note", fontNoteHeader, new Rectangle(contentX, currY, contentW - stampW, (int)(18 * scale)), inkMuted, TextFormatFlags.Left | oneLine);
+                currY += (int)(20 * scale);
+
+                using var fontHeadline = FontManager.GetSmallCapsFont(13f * scale, FontStyle.Bold);
+                int headlineW = contentW - stampW - (int)(14 * scale);
+                var headlineSize = TextRenderer.MeasureText(g, headline, fontHeadline, new Size(headlineW, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, headline, fontHeadline, new Rectangle(contentX, currY, headlineW, headlineSize.Height + 2), inkDark, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                currY = Math.Max(currY + headlineSize.Height, stampY + stampH) + (int)(10 * scale);
 
                 var stampState = g.Save();
                 g.TranslateTransform(stampX + stampW / 2f, stampY + stampH / 2f);
                 g.RotateTransform(-6f);
                 var rStampLocal = new Rectangle(-stampW / 2, -stampH / 2, stampW, stampH);
-
-                using var stampPen = new Pen(Color.FromArgb(195, 36, 36), 2.5f * scale);
-                g.DrawRectangle(stampPen, rStampLocal);
-
-                var rStampInner = new Rectangle(-stampW / 2 + (int)(3 * scale), -stampH / 2 + (int)(3 * scale), stampW - (int)(6 * scale), stampH - (int)(6 * scale));
-                using var innerPen = new Pen(Color.FromArgb(130, 195, 36, 36), 1.2f * scale);
-                g.DrawRectangle(innerPen, rStampInner);
-
-                using var fontStamp = FontManager.GetSmallCapsFont(12.5f * scale, FontStyle.Bold);
-                using var stampBrush = new SolidBrush(Color.FromArgb(210, 195, 36, 36));
-                using var sfStamp = new StringFormat
+                using (var stampPen = new Pen(Color.FromArgb(200, 175, 36, 36), 2.2f * scale))
+                    g.DrawRectangle(stampPen, rStampLocal);
+                using (var innerPen = new Pen(Color.FromArgb(110, 175, 36, 36), 1f * scale))
+                    g.DrawRectangle(innerPen, Rectangle.Inflate(rStampLocal, -(int)(3 * scale), -(int)(3 * scale)));
+                using (var fontStamp = FontManager.GetSmallCapsFont(11f * scale, FontStyle.Bold))
+                using (var stampBrush = new SolidBrush(Color.FromArgb(205, 175, 36, 36)))
+                using (var sfStamp = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 {
-                    Alignment = StringAlignment.Center,
-                    LineAlignment = StringAlignment.Center
-                };
-                string stampText = callsHandled >= 3 ? "VERIFIED & PASSED" : "UNDER REVIEW";
-                g.DrawString(stampText, fontStamp, stampBrush, rStampLocal, sfStamp);
+                    string stampText = callsHandled >= 3 ? "VERIFIED & PASSED" : "UNDER REVIEW";
+                    g.DrawString(stampText, fontStamp, stampBrush, rStampLocal, sfStamp);
+                }
                 g.Restore(stampState);
 
-                currY += (int)(22 * scale);
+                using var fontNoteBody = FontManager.GetSmallCapsFont(10.5f * scale);
+                for (int i = 1; i < noteLines.Count; i++)
+                {
+                    string line = noteLines[i];
+                    bool closing = i == noteLines.Count - 1 && noteLines.Count > 2;
+                    var size = TextRenderer.MeasureText(g, line, fontNoteBody, new Size(contentW, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    if (closing) currY += (int)(4 * scale);
+                    TextRenderer.DrawText(g, line, fontNoteBody, new Rectangle(contentX, currY, contentW, size.Height + 2),
+                        closing ? inkMuted : Color.FromArgb(44, 34, 26), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    currY += size.Height + (int)(5 * scale);
+                }
+                currY += (int)(12 * scale);
 
-                // Supervisor Note Body
-                using var fontNoteBody = FontManager.GetSmallCapsFont(11.5f * scale);
-                var noteBodyCol = Color.FromArgb(34, 26, 20);
-                int noteW = contentW - stampW - (int)(16 * scale);
-                string supervisorNote = Scenario.GetDebriefMessage(State);
-                int noteH = Math.Max((int)(56 * scale), (int)Math.Ceiling(g.MeasureString(supervisorNote, fontNoteBody, noteW).Height) + (int)(4 * scale));
-                var rNoteBody = new Rectangle(contentX, currY, noteW, noteH);
-                using var noteBrush = new SolidBrush(noteBodyCol);
-                using var noteSf = new StringFormat { Trimming = StringTrimming.Word };
-                g.DrawString(supervisorNote, fontNoteBody, noteBrush, rNoteBody, noteSf);
+                // Trunk log: one clean line per call
+                using var fontLedgerHead = FontManager.GetSmallCapsFont(10f * scale, FontStyle.Bold);
+                TextRenderer.DrawText(g, "Trunk log & dispositions", fontLedgerHead, new Rectangle(contentX, currY, contentW, (int)(18 * scale)), inkMuted, TextFormatFlags.Left | oneLine);
+                currY += (int)(20 * scale);
+                g.DrawLine(rulePen, contentX, currY, contentX + contentW, currY);
+                currY += (int)(6 * scale);
 
-                currY += noteH + (int)(12 * scale);
-
-                // Incident Disposition Ledger (Utilizes paper body with atmospheric log details)
-                using var fontLedgerHead = FontManager.GetSmallCapsFont(10.5f * scale, FontStyle.Bold);
-                var rLedgerHead = new Rectangle(contentX, currY, contentW, (int)(18 * scale));
-                TextRenderer.DrawText(g, "EMERGENCY TRUNK LOG & DISPOSITION SUMMARY", fontLedgerHead, rLedgerHead, Color.FromArgb(75, 62, 50), TextFormatFlags.Left | TextFormatFlags.NoPrefix);
-                currY += (int)(18 * scale);
-
-                using var divPen = new Pen(Color.FromArgb(160, 140, 120), 1.2f * scale);
-                g.DrawLine(divPen, contentX, currY, contentX + contentW, currY);
-                currY += (int)(4 * scale);
-
-                using var fontLedgerRow = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Regular);
-                using var fontLedgerBold = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Bold);
-                using var fontLedgerPlace = FontManager.GetSmallCapsFont(8.5f * scale, FontStyle.Regular);
-                int rowH2 = (int)(30 * scale);
-                int lineH = (int)(16 * scale);
+                using var fontLedgerNum = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Bold);
+                using var fontLedgerRow = FontManager.GetSmallCapsFont(10f * scale);
+                using var fontLedgerStatus = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Bold);
+                int rowH2 = (int)(23 * scale);
+                int numW = (int)(30 * scale);
+                // Wide enough for the longest status word, so none gets cut off
+                int statusW = new[] { "DISPATCHED", "RESTRICTED", "LOGGED", "PENDING" }
+                    .Max(t => TextRenderer.MeasureText(g, t, fontLedgerStatus, Size.Empty, TextFormatFlags.NoPrefix).Width) + (int)(6 * scale);
 
                 for (int i = 0; i < _calls.Count; i++)
                 {
                     var c = _calls[i];
                     int ry = currY + i * rowH2;
-                    var rRow = new Rectangle(contentX + (int)(4 * scale), ry, contentW - (int)(8 * scale), rowH2);
+                    string place = c.IsRestricted ? "Source classified" : c.AddressVerified ? c.Location : "Location unverified";
+                    string who = c.IsRestricted ? "Line 08" : c.CallerName;
 
-                    string place = c.IsRestricted ? "SOURCE CLASSIFIED" : c.AddressVerified ? c.Location : "LOCATION UNVERIFIED";
-                    string linePrefix = $"LINE {(i + 1):D2} · {c.CallerName}";
-                    string lineOutcome;
-                    Color outcomeCol;
-
-                    if (c.IsRestricted)
-                    {
-                        lineOutcome = "[ CIVIL DEFENSE RESTRICTION ]";
-                        outcomeCol = Color.FromArgb(175, 45, 45);
-                    }
+                    string status;
+                    Color statusCol;
+                    if (c.IsRestricted) { status = "RESTRICTED"; statusCol = Color.FromArgb(170, 45, 45); }
                     else if (c.Stage == CallStage.Resolved || c.Status == CallQueueStatus.Resolved)
                     {
-                        if (c.UnitDispatched)
-                        {
-                            lineOutcome = "[ CODE 3 PATROL DISPATCHED ]";
-                            outcomeCol = Color.FromArgb(45, 115, 55);
-                        }
-                        else
-                        {
-                            lineOutcome = "[ INCIDENT LOGGED / RESOLVED ]";
-                            outcomeCol = Color.FromArgb(45, 115, 55);
-                        }
+                        status = c.UnitDispatched ? "DISPATCHED" : "LOGGED";
+                        statusCol = Color.FromArgb(45, 112, 55);
                     }
-                    else
-                    {
-                        lineOutcome = "[ PENDING / UNRESOLVED ]";
-                        outcomeCol = Color.FromArgb(160, 110, 30);
-                    }
+                    else { status = "PENDING"; statusCol = Color.FromArgb(160, 110, 30); }
 
-                    const TextFormatFlags rowFlags = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis;
-                    int outcomeW = TextRenderer.MeasureText(lineOutcome, fontLedgerBold, Size.Empty, TextFormatFlags.NoPrefix).Width;
-                    var rTop = new Rectangle(rRow.X, rRow.Y, rRow.Width, lineH);
-                    var rPrefix = new Rectangle(rRow.X, rRow.Y, Math.Max(10, rRow.Width - outcomeW - (int)(10 * scale)), lineH);
-                    TextRenderer.DrawText(g, linePrefix, fontLedgerRow, rPrefix, Color.FromArgb(50, 42, 35), TextFormatFlags.Left | rowFlags);
-                    TextRenderer.DrawText(g, lineOutcome, fontLedgerBold, rTop, outcomeCol, TextFormatFlags.Right | rowFlags);
-                    var rPlace = new Rectangle(rRow.X + (int)(14 * scale), rRow.Y + lineH - (int)(2 * scale), rRow.Width - (int)(14 * scale), lineH);
-                    TextRenderer.DrawText(g, place, fontLedgerPlace, rPlace, Color.FromArgb(120, 104, 88), TextFormatFlags.Left | rowFlags);
+                    var rowFlags = TextFormatFlags.VerticalCenter | oneLine;
+                    TextRenderer.DrawText(g, (i + 1).ToString("D2"), fontLedgerNum, new Rectangle(contentX, ry, numW, rowH2), inkMuted, TextFormatFlags.Left | rowFlags);
+                    TextRenderer.DrawText(g, $"{who} · {place}", fontLedgerRow, new Rectangle(contentX + numW, ry, contentW - numW - statusW - (int)(8 * scale), rowH2), Color.FromArgb(50, 42, 35), TextFormatFlags.Left | rowFlags);
+                    TextRenderer.DrawText(g, status, fontLedgerStatus, new Rectangle(contentX + contentW - statusW, ry, statusW, rowH2), statusCol, TextFormatFlags.Right | rowFlags);
+                    if (i < _calls.Count - 1)
+                        g.DrawLine(hairPen, contentX + numW, ry + rowH2, contentX + contentW, ry + rowH2);
                 }
 
-                currY += _calls.Count * rowH2 + (int)(8 * scale);
-
-                // Verifying Supervisor Signature & Confidential Notice
-                g.DrawLine(divPen, contentX, currY, contentX + contentW, currY);
-                currY += (int)(6 * scale);
+                // Footer pinned just above the buttons
+                int footerBtnH = Math.Clamp((int)(44 * scale), 38, 48);
+                int footerY = paperBottom - footerBtnH - (int)(16 * scale) - (int)(50 * scale);
+                g.DrawLine(rulePen, contentX, footerY, contentX + contentW, footerY);
+                footerY += (int)(8 * scale);
 
                 using var fontNotice = FontManager.GetSmallCapsFont(8f * scale);
-                var rNotice = new Rectangle(contentX, currY, (int)(contentW * 0.58f), (int)(46 * scale));
-                string noticeText = "NOTICE: Official property of Municipal Emergency Services. Disclosure prohibited under Code 402.";
-                using var noticeBrush = new SolidBrush(Color.FromArgb(115, 100, 85));
-                g.DrawString(noticeText, fontNotice, noticeBrush, rNotice);
+                TextRenderer.DrawText(g, "Official property of Municipal Emergency Services.\nDisclosure prohibited under Code 402.", fontNotice,
+                    new Rectangle(contentX, footerY, (int)(contentW * 0.56f), (int)(32 * scale)), inkMuted, TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
 
-                int sigX = contentX + (int)(contentW * 0.60f);
-                int sigW = contentW - (int)(contentW * 0.60f);
-                using var fontSigTitle = FontManager.GetSmallCapsFont(8.5f * scale, FontStyle.Regular);
-                TextRenderer.DrawText(g, "VERIFYING SUPERVISOR:", fontSigTitle, new Rectangle(sigX, currY, sigW, (int)(14 * scale)), Color.FromArgb(115, 100, 85), TextFormatFlags.Right);
-
-                using var fontSig = FontManager.GetItalicFont(14.5f * scale);
+                int sigX = contentX + (int)(contentW * 0.56f);
+                int sigW = contentW - (int)(contentW * 0.56f);
+                using var fontSigTitle = FontManager.GetSmallCapsFont(8f * scale);
+                TextRenderer.DrawText(g, "Verifying supervisor", fontSigTitle, new Rectangle(sigX, footerY, sigW, (int)(14 * scale)), inkMuted, TextFormatFlags.Right | oneLine);
+                using var fontSig = FontManager.GetItalicFont(13.5f * scale);
                 string supervisorSignature = $"{System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(Scenario.SupervisorName.ToLowerInvariant())}, Supv.";
-                TextRenderer.DrawText(g, supervisorSignature, fontSig, new Rectangle(sigX, currY + (int)(14 * scale), sigW, (int)(22 * scale)), Color.FromArgb(30, 22, 55), TextFormatFlags.Right);
+                TextRenderer.DrawText(g, supervisorSignature, fontSig, new Rectangle(sigX, footerY + (int)(14 * scale), sigW, (int)(24 * scale)), Color.FromArgb(30, 22, 55), TextFormatFlags.Right | oneLine);
             };
 
             // Action Button: [ Complete Shift ]
