@@ -68,11 +68,11 @@ namespace StayOnTheLine.Forms
             lblClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblClose.BackColor = Color.Transparent;
             lblClose.Cursor = Cursors.Hand;
-            lblClose.Font = new Font("Georgia", 14F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblClose.Font = new Font("Segoe UI Symbol", 16F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblClose.ForeColor = Color.FromArgb(40, 25, 12);
-            lblClose.Location = new Point(605, 46);
+            lblClose.Location = new Point(572, 42);
             lblClose.Name = "lblClose";
-            lblClose.Size = new Size(36, 32);
+            lblClose.Size = new Size(40, 38);
             lblClose.TabIndex = 1;
             lblClose.Text = "✕";
             lblClose.TextAlign = ContentAlignment.MiddleCenter;
@@ -193,7 +193,7 @@ namespace StayOnTheLine.Forms
             // DeleteShiftDialog
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleMode = AutoScaleMode.None;
             BackColor = Color.FromArgb(18, 18, 18);
             ClientSize = new Size(680, 440);
             Controls.Add(pnlParchmentContainer);

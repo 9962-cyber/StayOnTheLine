@@ -70,7 +70,8 @@ namespace StayOnTheLine
             { "CHARM",   CharSide.Right  },
             { "CHARMEE", CharSide.Right  },
             { "STEF",    CharSide.Left   },
-            { "CHLOE",   CharSide.Center }
+            { "CHLOE",   CharSide.Center },
+            { "YSA",     CharSide.Left   }
         };
         private CharSide currentSide = CharSide.Center;
         private Image? currentCharacterImage;
@@ -93,7 +94,7 @@ namespace StayOnTheLine
         public Tutorial(StayOnTheLine.Models.OperatorProfile profile)
         {
             _profile = profile ?? new StayOnTheLine.Models.OperatorProfile(1, "OPERATOR");
-            _playerName = _profile.OperatorName;
+            _playerName = string.IsNullOrWhiteSpace(_profile.OperatorName) ? "OPERATOR" : _profile.OperatorName.Trim();
             InitializeComponent();
 
             fontName = FontExists("IM FELL DW Pica") ? "IM FELL DW Pica" : "Georgia";
@@ -117,11 +118,13 @@ namespace StayOnTheLine
             HookClick(this);
 
             // ---- ART ----
-            defaultBackground = LoadAsset("tutorialdialogue_bg.png", () => MakePlaceholderBackground());
+            // Shift 2's intro happens on the dispatch floor itself; the first night uses the tutorial room
+            string sceneBg = _profile?.CurrentShift == 2 ? "maingameplay_bg.png" : "tutorialdialogue_bg.png";
+            defaultBackground = LoadAsset(sceneBg, () => MakePlaceholderBackground());
             originalBackground = defaultBackground;
 
             // Different background while CHARM is speaking
-            var charmBg = LoadAsset("tutorialdialogue_bg.png",
+            var charmBg = LoadAsset(sceneBg,
                 () => MakePlaceholderBackground("CHARM BACKGROUND PLACEHOLDER",
                                                 Color.FromArgb(78, 52, 70), Color.FromArgb(16, 8, 14)));
             if (charmBg != null) speakerBackgrounds["CHARM"] = charmBg;
@@ -329,6 +332,7 @@ namespace StayOnTheLine
             // Narration or player never has a character portrait
             if (string.Equals(speaker, "NARRATION", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(speaker, "Y/N", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(speaker, "PLAYER", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(speaker, _playerName, StringComparison.OrdinalIgnoreCase))
             {
                 return null;
@@ -379,13 +383,22 @@ namespace StayOnTheLine
             return null;
         }
 
+        // Helper to format line text dynamically with the input Player Name
+        private string FormatDialogueText(string rawText)
+        {
+            if (string.IsNullOrEmpty(rawText)) return "";
+            return rawText.Replace("{PLAYER}", _playerName)
+                          .Replace("[PLAYER]", _playerName)
+                          .Replace("the player's", $"{_playerName}'s")
+                          .Replace("the player", _playerName)
+                          .Replace("The player", _playerName);
+        }
+
         // ------------------------------------------------------------------
         //  BACKGROUND (Dynamic aspect-ratio agnostic cover fit, zero black lines)
         // ------------------------------------------------------------------
         private void UpdateBackground()
         {
-            // Do not store a static bitmap on PictureBox to prevent aspect distortion and black letterboxing.
-            // Rendering is handled dynamically on Paint with high-quality bicubic interpolation.
             if (picBackground.Image != null)
             {
                 var old = picBackground.Image;
@@ -447,17 +460,15 @@ namespace StayOnTheLine
 
         private void PlaceCharacter(int W, int H)
         {
-            // Large bottom-anchored bounding box – sprite rendered via PicBackground_Paint.
-            // Height = 92 % of screen, width derived from height so art is never distorted.
             int cH = (int)(H * 0.92f);
             int cW = (int)(H * 0.70f);
             int top = H - cH; // pin to bottom of screen
             int left;
             switch (currentSide)
             {
-                case CharSide.Left:   left = (int)(W * 0.04f); break;
-                case CharSide.Right:  left = W - cW - (int)(W * 0.03f); break;
-                default:              left = (W - cW) / 2; break; // center
+                case CharSide.Left: left = (int)(W * 0.04f); break;
+                case CharSide.Right: left = W - cW - (int)(W * 0.03f); break;
+                default: left = (W - cW) / 2; break; // center
             }
             characterBounds = new Rectangle(left, top, cW, cH);
             picCharacter.Visible = false; // always hidden; drawing done in PicBackground_Paint
@@ -474,7 +485,7 @@ namespace StayOnTheLine
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            // 1. Dynamic Cover-Fit Background (Zero black lines, dynamically fills 100% of viewport)
+            // 1. Dynamic Cover-Fit Background
             if (originalBackground != null)
             {
                 float scale = Math.Max((float)w / originalBackground.Width, (float)h / originalBackground.Height);
@@ -485,7 +496,7 @@ namespace StayOnTheLine
 
                 g.DrawImage(originalBackground, drawX, drawY, drawW, drawH);
 
-                // Subtle CRT edge vignette to blend cinematic immersion
+                // Subtle CRT edge vignette
                 using var vPath = new GraphicsPath();
                 vPath.AddRectangle(new Rectangle(0, 0, w, h));
                 using var pgb = new PathGradientBrush(vPath)
@@ -497,7 +508,7 @@ namespace StayOnTheLine
                 g.FillRectangle(pgb, 0, 0, w, h);
             }
 
-            // 2. Character Sprite (Proportionally scaled, pinned to bottom of screen)
+            // 2. Character Sprite
             if (characterVisible && currentCharacterImage != null && characterBounds.Width > 0 && characterBounds.Height > 0)
             {
                 float imgAspect = (float)currentCharacterImage.Width / currentCharacterImage.Height;
@@ -558,12 +569,24 @@ namespace StayOnTheLine
             using (GraphicsPath path = new GraphicsPath(FillMode.Alternate))
             {
                 path.AddPolygon(pts.ToArray());
-                path.AddEllipse(cx - hole, cy - hole, hole * 2, hole * 2); // real hole (alternate fill)
+                path.AddEllipse(cx - hole, cy - hole, hole * 2, hole * 2);
                 g.FillPath(Brushes.White, path);
             }
         }
 
         private void LoadStory()
+        {
+            if (_profile?.CurrentShift == 2)
+            {
+                LoadStoryShift2();
+            }
+            else
+            {
+                LoadStoryShift1();
+            }
+        }
+
+        private void LoadStoryShift1()
         {
             storyQueue.Enqueue(new DialogueLine("NARRATION", "Tonight is your first overnight shift at the emergency dispatch center."));
             storyQueue.Enqueue(new DialogueLine("NARRATION", "The building looks older than it did during your interview. Fluorescent lights buzz overhead. A wall clock ticks above a row of desks, and the CRT monitors cast a faint phosphor glow across the room."));
@@ -579,7 +602,7 @@ namespace StayOnTheLine
             // Charmee from neighboring console
             storyQueue.Enqueue(new DialogueLine("NARRATION", "[A cheerful voice comes from the neighboring console.]"));
             storyQueue.Enqueue(new DialogueLine("CHARMEE", "Hey! Don't scare the newbie before they even get their headset on.", "giggle", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Charmee turns her chair toward the player and smiles.]"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[Charmee turns her chair toward {_playerName} and smiles.]"));
             storyQueue.Enqueue(new DialogueLine("CHARMEE", "I'm Charmee Cantones. Your neighboring console, unofficial coffee supplier, and the person you should ask if you need anything.", "smile", CharSide.Right));
             storyQueue.Enqueue(new DialogueLine("KRISHA", "Anything?", "concerned", CharSide.Left));
             storyQueue.Enqueue(new DialogueLine("CHARMEE", "Almost anything.", "giggle", CharSide.Right));
@@ -592,7 +615,7 @@ namespace StayOnTheLine
             storyQueue.Enqueue(new DialogueLine("KRISHA", "She's also very good at making a serious situation sound less serious than it is.", "serious", CharSide.Left));
             storyQueue.Enqueue(new DialogueLine("CHARMEE", "I heard that!", "crashout", CharSide.Right));
             storyQueue.Enqueue(new DialogueLine("KRISHA", "You were supposed to.", "smile", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Krisha hands the player a training folder.]"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[Krisha hands {_playerName} a training folder.]"));
             storyQueue.Enqueue(new DialogueLine("KRISHA", "All right. Jokes aside, listen carefully.", "serious", CharSide.Left));
 
             // Three Basic Rules
@@ -608,6 +631,45 @@ namespace StayOnTheLine
             // Telephone rings -> Shift starts
             storyQueue.Enqueue(new DialogueLine("NARRATION", "[A telephone rings across the room. Charmee immediately turns back to her console.]"));
             storyQueue.Enqueue(new DialogueLine("KRISHA", "That's your first lesson. Let's see how you do.", "serious", CharSide.Left));
+        }
+
+        private void LoadStoryShift2()
+        {
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[10:50 PM — Dispatch Center]"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[{_playerName} arrives. Krisha's desk is empty. Her headset rests beside the keyboard.]"));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Before we begin, there's been a staffing change.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Krisha Narciso has been transferred to another department. You will be working without her from now on.", "talking", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[{_playerName} looks toward Krisha's empty console.]"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[{_playerName} checks Krisha's console.]"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "SYSTEM: OPERATOR NARCISO — SESSION ACTIVE."));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Do not use another operator's account. If you encounter an access issue, report it to me.", "annoyed", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Wait, transferred? Since when?", "serious", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("YSA", "The reassignment was approved by management.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Oh.", "serious", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Charm looks at Krisha's empty chair. For once, she doesn't immediately make a joke.]"));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "She trained me when I first started here. She used to tell me that the night shift was like a family.", "talking", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "A very tired, underpaid family that argued over the last cup of coffee, but still a family.", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Cantones, your calls.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Right. Sorry.", "serious", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[Charm turns back to her console, then glances at {_playerName}'s screen.]"));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "If you need help tonight, I'm right here, okay?", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("YSA", "The department has procedures for assistance. Follow them.", "annoyed", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Ysa walks away.]"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[{_playerName} looks at Krisha's console again.]"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "SYSTEM: OPERATOR NARCISO — SESSION ACTIVE."));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "CLUE 2: Krisha's account remains active after her reported transfer."));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Hey. Don't stare at that all night. It'll only make you feel worse.", "serious", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Come on. Let's get through tonight. I'll even share my coffee.", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", $"[She slides a cup toward {_playerName}.]"));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Don't worry. I made a fresh one.", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[The coffee is already cold.]"));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "...Mostly fresh.", "giggle", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "Shift Briefing"));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "SYSTEM: SHIFT 2 STARTED."));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "SYSTEM: AVAILABLE UNITS: 3."));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Tonight's priority is the incoming queue. We have reports of delayed responses in the surrounding districts.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Verify addresses, document discrepancies, and don't leave urgent calls unattended.", "talking", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARMEE", "Three units, three calls to start with. Let's hope the phones behave.", "smile", CharSide.Right));
         }
 
         private void DisplayNextLine()
@@ -641,6 +703,12 @@ namespace StayOnTheLine
 
             bool isNarration = string.Equals(line.Speaker, "NARRATION", StringComparison.OrdinalIgnoreCase);
 
+            // The phone rings when the script says so; it keeps ringing into the first call of the shift
+            if (isNarration && line.Text.Contains("telephone rings", StringComparison.OrdinalIgnoreCase))
+            {
+                StayOnTheLine.Systems.AudioManager.Instance.StartPhoneRing();
+            }
+
             if (isNarration)
             {
                 lblSpeaker.Text = "";
@@ -654,14 +722,20 @@ namespace StayOnTheLine
                 lblIncoming.Visible = true;
 
                 if (string.Equals(line.Speaker, "Y/N", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(line.Speaker, "PLAYER", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(line.Speaker, _playerName, StringComparison.OrdinalIgnoreCase))
                 {
-                    lblSpeaker.Text = _playerName;
+                    lblSpeaker.Text = _playerName.ToUpperInvariant();
                     lblIncoming.Text = "TRAINEE DISPATCHER";
                 }
                 else if (string.Equals(line.Speaker, "KRISHA", StringComparison.OrdinalIgnoreCase))
                 {
                     lblSpeaker.Text = "KRISHA NARCISO";
+                    lblIncoming.Text = "SHIFT SUPERVISOR";
+                }
+                else if (string.Equals(line.Speaker, "YSA", StringComparison.OrdinalIgnoreCase))
+                {
+                    lblSpeaker.Text = "YSA";
                     lblIncoming.Text = "SHIFT SUPERVISOR";
                 }
                 else if (string.Equals(line.Speaker, "CHARM", StringComparison.OrdinalIgnoreCase) ||
@@ -672,15 +746,11 @@ namespace StayOnTheLine
                 }
                 else
                 {
-                    lblSpeaker.Text = line.Speaker;
+                    lblSpeaker.Text = line.Speaker.ToUpperInvariant();
                     lblIncoming.Text = "INCOMING / VOICE";
                 }
             }
 
-            // Show the speaking character with their expression.
-            // The sprite is drawn entirely by PicBackground_Paint using characterBounds –
-            // picCharacter is kept hidden because its Bounds are never set and would appear
-            // at (0,0) with a tiny default size (the bug visible in the upper-left corner).
             Image? charImg = GetCharacterImage(line.Speaker, line.Expression);
             if (charImg != null)
             {
@@ -699,7 +769,7 @@ namespace StayOnTheLine
                 }
 
                 characterVisible = true;
-                picCharacter.Visible = false; // never shown directly; drawn via PicBackground_Paint
+                picCharacter.Visible = false;
                 PlaceCharacter(ClientSize.Width, ClientSize.Height);
                 pnlDialogue.BringToFront();
                 btnSettings.BringToFront();
@@ -713,11 +783,11 @@ namespace StayOnTheLine
                 picBackground.Invalidate(true);
             }
 
-            currentFullText = line.Text;
+            currentFullText = FormatDialogueText(line.Text);
             charIndex = 0;
             lblDialogue.Text = "";
             float s = this.ClientSize.Height / 1080f;
-            float baseSize = line.Text.Length > 120 ? 17.5f : 22f;
+            float baseSize = currentFullText.Length > 120 ? 17.5f : 22f;
             SetFont(lblDialogue, baseSize * s);
 
             int pad = (int)(40 * s);
@@ -783,6 +853,14 @@ namespace StayOnTheLine
             }
         }
 
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            // Left the scene early: don't carry the phone ring back to the menu
+            if (DialogResult != DialogResult.OK)
+                StayOnTheLine.Systems.AudioManager.Instance.StopPhoneRing();
+            base.OnFormClosed(e);
+        }
+
         private void btnSettings_Click(object? sender, EventArgs e)
         {
             using var sf = new Forms.SettingsForm();
@@ -812,7 +890,6 @@ namespace StayOnTheLine
                 using (var br = new LinearGradientBrush(new Rectangle(0, 0, 1920, 1080), c1, c2, 90f))
                     g.FillRectangle(br, 0, 0, 1920, 1080);
 
-                // A few rectangles so it reads like a dim room
                 using (var b = new SolidBrush(Color.FromArgb(40, 255, 255, 255)))
                 {
                     g.FillRectangle(b, 220, 260, 420, 260);
@@ -828,16 +905,16 @@ namespace StayOnTheLine
 
         private static Image MakePlaceholderCharacter(string name, Color body)
         {
-            Bitmap bmp = new Bitmap(700, 1000);   // transparent canvas
+            Bitmap bmp = new Bitmap(700, 1000);
             using (Graphics g = Graphics.FromImage(bmp))
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 using (var br = new SolidBrush(body))
                 using (var pen = new Pen(Color.FromArgb(160, 255, 255, 255), 3f))
                 {
-                    g.FillEllipse(br, 100, 400, 500, 900);     // shoulders / body
+                    g.FillEllipse(br, 100, 400, 500, 900);
                     g.DrawEllipse(pen, 100, 400, 500, 900);
-                    g.FillEllipse(br, 225, 90, 250, 330);      // head
+                    g.FillEllipse(br, 225, 90, 250, 330);
                     g.DrawEllipse(pen, 225, 90, 250, 330);
                 }
                 using (var f = new Font("Segoe UI", 26f, FontStyle.Bold))

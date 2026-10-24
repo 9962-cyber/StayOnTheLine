@@ -10,7 +10,7 @@ namespace StayOnTheLine.Systems
     /// OOP Principle: ENCAPSULATION & SINGLETON
     /// Manages the dual-layered psychological horror audio atmosphere:
     /// 1. Primary Background Music (e.g., user-supplied background.mp3)
-    /// 2. Layered Subtle Ambient Drone & Analog Tape Hiss (continuous, seamless loop without fade-out, played at lower volume)
+    /// 2. (Ambient drone layer retired: its steady 110 Hz tone read as constant ringing)
     /// 3. Vintage Dispatch SFX (mechanical typewriter clicks, bells, paper rustling, archival ink stamps, burn sizzle).
     /// Uses native Win32 MCI for non-blocking, multi-channel concurrent audio.
     /// </summary>
@@ -28,6 +28,10 @@ namespace StayOnTheLine.Systems
         private int _masterVolume = 80;
         private int _ambientVolume = 75;
         private int _sfxVolume = 85;
+
+        // Relative loudness of the frequent, repetitive effects against the SFX slider
+        private const float TypingVolumeShare = 0.25f;
+        private const float BlipVolumeShare = 0.45f;
 
         [DllImport("winmm.dll", EntryPoint = "mciSendStringA", CharSet = CharSet.Ansi)]
         private static extern int mciSendString(string lpszCommand, StringBuilder? lpszReturnString, int cchReturn, IntPtr hwndCallback);
@@ -91,9 +95,10 @@ namespace StayOnTheLine.Systems
             _sfxVolume = settings.SfxVolume;
             _isMuted = settings.IsMuted;
 
-            // 1. Primary Background Music (Full ambient volume calibration)
-            int effectiveMusic = _isMuted ? 0 : (int)(10 * (_masterVolume / 100f) * _ambientVolume);
-            mciSendString($"setaudio BackgroundMusic volume to {effectiveMusic}", null, 0, IntPtr.Zero);
+            // 1. Telephone ring (background.mp3) follows the SFX level; muting silences a ring in progress
+            int effectiveRing = _isMuted ? 0 : (int)(10 * (_masterVolume / 100f) * _sfxVolume);
+            mciSendString($"setaudio BackgroundMusic volume to {effectiveRing}", null, 0, IntPtr.Zero);
+            if (_isMuted) StopPhoneRing();
 
             // 2. Layered Ambient Drone / Tape Hiss (Subtle eerie undercurrent ~35% volume)
             int effectiveDrone = _isMuted ? 0 : (int)(10 * (_masterVolume / 100f) * _ambientVolume * 0.35f);
@@ -101,11 +106,21 @@ namespace StayOnTheLine.Systems
 
             // 3. Dispatch Sound Effects
             int effectiveSfx = _isMuted ? 0 : (int)(10 * (_masterVolume / 100f) * _sfxVolume);
-            string[] sfxAliases = { "PaperRustle", "InkStamp", "BurnHiss", "FreqBlip", "Typewriter1", "Typewriter2", "Typewriter3", "TypewriterBell" };
+            string[] sfxAliases = { "PaperRustle", "InkStamp", "BurnHiss", "TypewriterBell" };
             foreach (var alias in sfxAliases)
             {
                 mciSendString($"setaudio {alias} volume to {effectiveSfx}", null, 0, IntPtr.Zero);
             }
+
+            // Text typing clicks fire constantly while dialogue prints, so they sit well under the other effects
+            int effectiveTyping = (int)(effectiveSfx * TypingVolumeShare);
+            foreach (var alias in new[] { "Typewriter1", "Typewriter2", "Typewriter3" })
+            {
+                mciSendString($"setaudio {alias} volume to {effectiveTyping}", null, 0, IntPtr.Zero);
+            }
+
+            // The hover blip is a pure 950 Hz beep; keep it soft so repeated hovers don't ring
+            mciSendString($"setaudio FreqBlip volume to {(int)(effectiveSfx * BlipVolumeShare)}", null, 0, IntPtr.Zero);
         }
 
         private string? ResolveAudioFilePath(string fileName)
@@ -201,29 +216,10 @@ namespace StayOnTheLine.Systems
 
             try
             {
-                // Channel 1: Primary Background Music
-                if (!_loadedAliases.ContainsKey("BackgroundMusic"))
-                {
-                    OpenAudioFile("background.mp3", "BackgroundMusic");
-                }
-                if (_loadedAliases.ContainsKey("BackgroundMusic"))
-                {
-                    mciSendString("play BackgroundMusic repeat", null, 0, IntPtr.Zero);
-                    int effectiveMusic = _isMuted ? 0 : (int)(10 * (_masterVolume / 100f) * _ambientVolume);
-                    mciSendString($"setaudio BackgroundMusic volume to {effectiveMusic}", null, 0, IntPtr.Zero);
-                }
-
-                // Channel 2: Layered subtle ambient drone & tape hiss (softer layer underneath)
-                if (!_loadedAliases.ContainsKey("AmbientDrone"))
-                {
-                    OpenAudioFile("ambient_drone.wav", "AmbientDrone");
-                }
-                if (_loadedAliases.ContainsKey("AmbientDrone"))
-                {
-                    mciSendString("play AmbientDrone repeat", null, 0, IntPtr.Zero);
-                    int effectiveDrone = _isMuted ? 0 : (int)(10 * (_masterVolume / 100f) * _ambientVolume * 0.35f);
-                    mciSendString($"setaudio AmbientDrone volume to {effectiveDrone}", null, 0, IntPtr.Zero);
-                }
+                // background.mp3 is a telephone ring, not music, so it is not looped here:
+                // it plays only while a call is ringing (StartPhoneRing / StopPhoneRing).
+                // The ambient_drone.wav layer is not looped either: it is a steady 110 Hz tone that
+                // reads as a constant ringing underneath the whole game.
 
                 _isAmbientPlaying = true;
             }
@@ -239,13 +235,55 @@ namespace StayOnTheLine.Systems
 
             try
             {
-                mciSendString("stop BackgroundMusic", null, 0, IntPtr.Zero);
                 mciSendString("stop AmbientDrone", null, 0, IntPtr.Zero);
+                StopPhoneRing();
             }
             catch { }
             finally
             {
                 _isAmbientPlaying = false;
+            }
+        }
+
+        private bool _isPhoneRinging;
+
+        /// <summary>
+        /// Starts the telephone ring (background.mp3) on repeat; call when a line is ringing.
+        /// </summary>
+        public void StartPhoneRing()
+        {
+            if (_isMuted || _isPhoneRinging) return;
+            try
+            {
+                if (!_loadedAliases.ContainsKey("BackgroundMusic"))
+                {
+                    OpenAudioFile("background.mp3", "BackgroundMusic");
+                }
+                if (_loadedAliases.ContainsKey("BackgroundMusic"))
+                {
+                    int effectiveRing = (int)(10 * (_masterVolume / 100f) * _sfxVolume);
+                    mciSendString($"setaudio BackgroundMusic volume to {effectiveRing}", null, 0, IntPtr.Zero);
+                    mciSendString("play BackgroundMusic from 0 repeat", null, 0, IntPtr.Zero);
+                    _isPhoneRinging = true;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Stops the telephone ring; call when the line is answered or the scene moves on.
+        /// </summary>
+        public void StopPhoneRing()
+        {
+            if (!_isPhoneRinging) return;
+            try
+            {
+                mciSendString("stop BackgroundMusic", null, 0, IntPtr.Zero);
+            }
+            catch { }
+            finally
+            {
+                _isPhoneRinging = false;
             }
         }
 

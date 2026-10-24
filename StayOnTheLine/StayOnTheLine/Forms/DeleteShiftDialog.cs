@@ -35,6 +35,7 @@ namespace StayOnTheLine.Forms
             LoadParchmentBackground();
             SetupCustomCardPainting();
             WireButtonEvents();
+            lblClose.BringToFront();
         }
 
         private static void EnableDoubleBuffering(Control control)
@@ -145,6 +146,7 @@ namespace StayOnTheLine.Forms
 
         private void DeleteShiftDialog_Load(object? sender, EventArgs e)
         {
+            DesignScaler.FitDialog(this);
             lblFileHeader.Text = $"INCINERATION PROTOCOL // FILE {TargetProfile.SlotIndex:D2}";
             lblOperatorName.Text = $"OPERATOR: {TargetProfile.OperatorName.ToUpper()}";
             lblOperatorStats.Text = $"SHIFT {TargetProfile.CurrentShift:D2} - {TargetProfile.CallsLogged} CALLS LOGGED";

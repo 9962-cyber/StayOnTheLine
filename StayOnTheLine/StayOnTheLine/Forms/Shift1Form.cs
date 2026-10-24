@@ -60,6 +60,8 @@ namespace StayOnTheLine.Forms
         private readonly System.Windows.Forms.Timer _tutorialPulseTimer = new();
         private bool _pulseHighlight = false;
 
+        // Shift 2 Specific Dialogue & Discrepancy Tracking
+
         // UI Controls for Desk Room View
         private Panel _pnlDeskHeader = null!;
         private Label _lblDeskHeaderTitle = null!;
@@ -127,6 +129,11 @@ namespace StayOnTheLine.Forms
         private readonly List<ActionChoice> _currentChoices = new();
         private readonly Label[] _actionButtons = new Label[6];
 
+        // CRT text scales with the monitor so it never outgrows its boxes
+        private readonly Dictionary<Control, Font> _crtBaseFonts = new();
+        private float _crtFontScale = 1f;
+        private float _deskFontScale = -1f;
+
         // Clue 01 Notification Banner & Supervisor Teletype Bar
         private Label _lblClueBanner = null!;
         private Panel _pnlSupervisorContainer = null!;
@@ -135,11 +142,47 @@ namespace StayOnTheLine.Forms
         private Label _btnSupervisorScrollUp = null!;
         private Label _btnSupervisorScrollDown = null!;
 
+        // Charmee speaks from the neighboring console, not through the CRT
+        private Controls.CharacterDialogueBox _charmDialogue = null!;
+        private readonly Dictionary<string, Image?> _charmPortraits = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _charmQueuedLines = new();   // lines in the current pop-up run
+        private string _lastSystemBarText = "SYSTEM: ALL TRUNK LINES MONITORED.";
+
+        // A response plays in script order: the CRT types the caller/system part, then Charmee
+        // speaks in her pop-up, then the next CRT part continues, and so on.
+        private sealed record ScriptSegment(string? CrtText, List<(string Speaker, string Text)>? CharmLines, bool Docked = false);
+        private readonly Queue<ScriptSegment> _scriptSegments = new();
+        private bool _freshTranscriptPending;
+
+        // Who answers queue-misclicks: Krisha trains you in Shift 1; afterwards the switchboard does
+        private string QueueAdvisor => Scenario.ShiftNumber == 1 ? "KRISHA" : "SYSTEM";
+
         public ShiftPlayForm(OperatorProfile profile, IShiftScenario scenario) : base(profile, scenario)
         {
             _calls = Scenario.GenerateCalls();
             LoadAssets();
+            _charmDialogue = new Controls.CharacterDialogueBox();
             InitializeCustomUI();
+            Controls.Add(_charmDialogue);
+            _charmDialogue.Finished += (s, e) => PlayNextSegment();
+            _charmDialogue.VisibleChanged += (s, e) =>
+            {
+                // While Charmee talks, the room scene replaces the desk / terminal; restore it afterwards
+                bool scene = _charmDialogue.Visible && !_charmDialogue.Docked;
+                bool reportOpen = _pnlDebriefModal != null && _pnlDebriefModal.Visible;
+                bool isTerminal = !scene && !reportOpen && _currentView == ViewState.ComputerTerminal;
+                bool isDesk = !scene && !reportOpen && _currentView == ViewState.DeskRoom;
+
+                _pnlCrtScreen.Visible = isTerminal;
+                _btnBackToDesk.Visible = isTerminal;
+                _btnTerminalSettings.Visible = isTerminal;
+                _btnTerminalEndShift.Visible = isTerminal;
+                if (_lblDeskStickyNote != null) _lblDeskStickyNote.Visible = isTerminal && !_charmDialogue.Visible;
+                _pnlDeskHeader.Visible = isDesk;
+                _lblDeskHotspot.Visible = isDesk;
+                if (_lblDeskBookHotspot != null) _lblDeskBookHotspot.Visible = isDesk;
+            };
+            _lblSupervisorBar.TextChanged += (s, e) => RouteCharmHint();
             ApplyResponsiveLayout();
 
             Resize += (s, e) => ApplyResponsiveLayout();
@@ -221,14 +264,14 @@ namespace StayOnTheLine.Forms
 
             _lblDeskHeaderTitle = new Label
             {
-                Text = $"CIVIL DEFENSE NIGHT DESK  //  TERMINAL 04   ·   OPERATOR: {Profile.OperatorName.ToUpperInvariant()}   ·   {Scenario.ShiftTitle}",
+                Text = $"NIGHT DESK  //  TERMINAL 04   ·   OPERATOR: {Profile.OperatorName.ToUpperInvariant()}   ·   {Scenario.ShiftTitle}",
                 ForeColor = Color.FromArgb(220, 235, 215),
                 BackColor = Color.Transparent,
                 Font = FontManager.GetSmallCapsFont(15f, FontStyle.Bold),
                 Dock = DockStyle.Left,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Padding = new Padding(24, 0, 0, 0),
-                AutoSize = true
+                AutoEllipsis = true
             };
 
             _btnDeskSettings = new Label
@@ -347,12 +390,12 @@ namespace StayOnTheLine.Forms
             _lblDeskStickyNote.Click += (s, e) =>
             {
                 AudioManager.Instance.PlayPaperRustle();
-                MessageBox.Show(
+                ParchmentNoticeDialog.ShowNotice(
                     this,
-                    "HANDWRITTEN NOTE TAPED TO CONSOLE:\n\n'Line 08 — Do not answer. Do not trace. That channel has been dead for twenty years.'\n\n— Shift Supervisor Krisha Narciso",
-                    "Console Directive Note",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                    "HANDWRITTEN NOTE // TAPED TO CONSOLE",
+                    "Line 08 — Do not answer.",
+                    "\"Do not answer. Do not trace. That channel has been dead for twenty years.\"\n\n— Shift Supervisor Krisha Narciso",
+                    "PUT IT BACK");
             };
             Controls.Add(_lblDeskStickyNote);
 
@@ -754,7 +797,7 @@ namespace StayOnTheLine.Forms
             _shiftTimer.Tick += (s, e) => UpdateStopwatch();
             _shiftTimer.Start();
 
-            _typewriterTimer.Interval = SettingsManager.Instance.Current.GetDelayPerCharacterMs();
+            _typewriterTimer.Interval = Math.Max(1, SettingsManager.Instance.Current.GetDelayPerCharacterMs());
             _typewriterTimer.Tick += (s, e) => UpdateTypewriter();
 
             // Panic Decay Timer (+4% every 2s during Call 2 danger)
@@ -801,6 +844,40 @@ namespace StayOnTheLine.Forms
             }
         }
 
+        private static string QueueLocationText(EmergencyCall call) =>
+            call.IsRestricted ? "SOURCE CLASSIFIED"
+            : call.AddressVerified ? call.Location
+            : "TRACING…";
+
+        private void ApplyCrtFontScale(float fontScale)
+        {
+            bool changed = Math.Abs(fontScale - _crtFontScale) > 0.01f;
+            _crtFontScale = fontScale;
+            ScaleFontsIn(_pnlCrtScreen, changed);
+            if (changed)
+            {
+                foreach (var btn in _actionButtons) btn?.Invalidate();
+            }
+        }
+
+        private void ScaleFontsIn(Control parent, bool rescaleKnown)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                bool known = _crtBaseFonts.TryGetValue(child, out var baseFont);
+                if (!known)
+                {
+                    baseFont = child.Font;
+                    _crtBaseFonts[child] = baseFont;
+                }
+                if (!known || rescaleKnown)
+                {
+                    child.Font = new Font(baseFont!.FontFamily, Math.Max(5f, baseFont.Size * _crtFontScale), baseFont.Style, baseFont.Unit);
+                }
+                ScaleFontsIn(child, rescaleKnown);
+            }
+        }
+
         private void BuildQueueCards()
         {
             _queueCards.Clear();
@@ -831,12 +908,13 @@ namespace StayOnTheLine.Forms
 
                 var lblLine = new Label
                 {
-                    Text = $"{call.CallId}\n{call.DisplayLocation}",
+                    Text = $"{call.CallId}\n{QueueLocationText(call)}",
                     ForeColor = Color.FromArgb(210, 225, 205),
                     BackColor = Color.Transparent,
                     Font = FontManager.GetSmallCapsFont(9f, FontStyle.Regular),
                     Size = new Size(114, 38),
-                    Location = new Point(44, 8)
+                    Location = new Point(44, 8),
+                    AutoEllipsis = true
                 };
 
                 var lblBadge = new Label
@@ -924,7 +1002,9 @@ namespace StayOnTheLine.Forms
             if (_calls[targetIndex].IsRestricted)
             {
                 AudioManager.Instance.PlayFrequencyBlip();
-                _lblSupervisorBar.Text = "KRISHA: Look at the yellow note on your desk: 'Line 08 Do not answer.' That channel has been dead for twenty years.";
+                _lblSupervisorBar.Text = Scenario.ShiftNumber == 1
+                    ? "KRISHA: Look at the yellow note on your desk: 'Line 08 Do not answer.' That channel has been dead for twenty years."
+                    : "SYSTEM: LINE 08 IS LOCKED BY CIVIL DEFENSE DIRECTIVE. DO NOT ANSWER.";
                 return;
             }
 
@@ -938,7 +1018,7 @@ namespace StayOnTheLine.Forms
             if (_calls[targetIndex].Status == CallQueueStatus.Resolved)
             {
                 AudioManager.Instance.PlayFrequencyBlip();
-                _lblSupervisorBar.Text = $"KRISHA: Trunk Line 0{(targetIndex + 1)} ({_calls[targetIndex].CallerName}) is already resolved and filed. Focus on your active emergency lines!";
+                _lblSupervisorBar.Text = $"{QueueAdvisor}: Trunk Line 0{(targetIndex + 1)} ({_calls[targetIndex].CallerName}) is already resolved and filed. Focus on your active emergency lines!";
                 return;
             }
 
@@ -946,7 +1026,7 @@ namespace StayOnTheLine.Forms
             if (CurrentCall.Status != CallQueueStatus.Resolved)
             {
                 AudioManager.Instance.PlayFrequencyBlip();
-                _lblSupervisorBar.Text = $"KRISHA: Trunk Line 0{(targetIndex + 1)} is holding in queue. Emergency dispatch protocol requires completing active Line 0{(_activeCallIndex + 1)} first!";
+                _lblSupervisorBar.Text = $"{QueueAdvisor}: Trunk Line 0{(targetIndex + 1)} is holding in queue. Emergency dispatch protocol requires completing active Line 0{(_activeCallIndex + 1)} first!";
                 return;
             }
 
@@ -959,7 +1039,7 @@ namespace StayOnTheLine.Forms
 
             // Operator attempted to skip multiple calls ahead in the queue
             AudioManager.Instance.PlayFrequencyBlip();
-            _lblSupervisorBar.Text = $"KRISHA: Trunk Line 0{(targetIndex + 1)} is holding in queue. Emergency dispatch protocol requires taking incoming calls in order!";
+            _lblSupervisorBar.Text = $"{QueueAdvisor}: Trunk Line 0{(targetIndex + 1)} is holding in queue. Emergency dispatch protocol requires taking incoming calls in order!";
         }
 
         private Label MakeActionButton()
@@ -992,19 +1072,22 @@ namespace StayOnTheLine.Forms
                 e.Graphics.DrawRectangle(borderPen, rc);
 
                 // Top Tag
-                var tagFont = FontManager.GetSmallCapsFont(9f, FontStyle.Bold);
-                var tagRect = new Rectangle(0, 4, lbl.Width, 16);
-                string tagText = choice.IsRecommended ? $"[►] {choice.Tag}" : choice.Tag;
+                float fs = _crtFontScale;
+                using var tagFont = FontManager.GetSmallCapsFont(9f * fs, FontStyle.Bold);
+                int tagH = Math.Max(12, (int)(16 * fs));
+                var tagRect = new Rectangle(0, Math.Max(2, (int)(4 * fs)), lbl.Width, tagH);
+                string tagText = (choice.IsRecommended && Scenario.HasTutorialGuidance) ? $"[►] {choice.Tag}" : choice.Tag;
                 Color tagCol = (choice.IsRecommended && _pulseHighlight) ? Color.FromArgb(255, 235, 140) : choice.TagColor;
                 TextRenderer.DrawText(e.Graphics, tagText, tagFont, tagRect, tagCol,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
 
                 // Main Caption
-                var captionFont = FontManager.GetItalicFont(12.5f);
-                var capRect = new Rectangle(6, 18, lbl.Width - 12, lbl.Height - 20);
+                using var captionFont = FontManager.GetItalicFont(12.5f * fs);
+                int capTop = tagRect.Bottom;
+                var capRect = new Rectangle(6, capTop, lbl.Width - 12, lbl.Height - capTop - 3);
                 Color capCol = isHovered ? Color.White : Color.FromArgb(220, 235, 215);
                 TextRenderer.DrawText(e.Graphics, choice.Caption, captionFont, capRect, capCol,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
             };
 
             lbl.MouseEnter += (s, e) =>
@@ -1046,7 +1129,7 @@ namespace StayOnTheLine.Forms
             _pnlDeskHeader.Visible = !isTerminal;
             _lblDeskHotspot.Visible = !isTerminal;
             if (_lblDeskBookHotspot != null) _lblDeskBookHotspot.Visible = !isTerminal;
-            if (_lblDeskStickyNote != null) _lblDeskStickyNote.Visible = isTerminal;
+            if (_lblDeskStickyNote != null) _lblDeskStickyNote.Visible = isTerminal && !(_charmDialogue?.Visible ?? false);
 
             _btnBackToDesk.Visible = isTerminal;
             _btnTerminalSettings.Visible = isTerminal;
@@ -1145,12 +1228,14 @@ namespace StayOnTheLine.Forms
                     TagColor = Color.FromArgb(255, 120, 120),
                     OnClick = () =>
                     {
-                        _lblSupervisorBar.Text = "KRISHA: Look at the yellow note on your desk: 'Line 08 Do not answer.' That channel has been dead for twenty years.";
+                        _lblSupervisorBar.Text = Scenario.ShiftNumber == 2
+                            ? "YSA: Line 08 is locked by Civil Defense directive. Do not touch it."
+                            : "KRISHA: Look at the yellow note on your desk: 'Line 08 Do not answer.' That channel has been dead for twenty years.";
                         AudioManager.Instance.PlayFrequencyBlip();
                     }
                 });
             }
-            else if (_activeCallIndex == 0) // CALL 01: Eleanor Vance (21 West Street, Apt 5B)
+            else if (Scenario.ShiftNumber == 1 && _activeCallIndex == 0) // SHIFT 1 – CALL 01: Eleanor Vance (21 West Street, Apt 5B)
             {
                 switch (call.Stage)
                 {
@@ -1303,7 +1388,7 @@ namespace StayOnTheLine.Forms
                         break;
                 }
             }
-            else if (_activeCallIndex == 1) // CALL 02: Chloe Bautista (14 Bell Street)
+            else if (Scenario.ShiftNumber == 1 && _activeCallIndex == 1) // SHIFT 1 – CALL 02: Chloe Bautista (14 Bell Street)
             {
                 switch (call.Stage)
                 {
@@ -1502,7 +1587,7 @@ namespace StayOnTheLine.Forms
                         break;
                 }
             }
-            else if (_activeCallIndex == 2) // CALL 03: Marcus Reed (88 Elm Ridge Road)
+            else if (Scenario.ShiftNumber == 1 && _activeCallIndex == 2) // SHIFT 1 – CALL 03: Marcus Reed (88 Elm Ridge Road)
             {
                 switch (call.Stage)
                 {
@@ -1655,11 +1740,487 @@ namespace StayOnTheLine.Forms
                 }
             }
 
+            // ══════════════════════════════════════════════════════════════
+            // SHIFT 2 DYNAMIC CHOICES (mirrors the Shift 2 script)
+            // ══════════════════════════════════════════════════════════════
+            else if (Scenario.ShiftNumber == 2 && _activeCallIndex == 0) // SHIFT 2 – CALL 01: Stranded Caller (Old Water Tower Road)
+            {
+                switch (call.Stage)
+                {
+                    case CallStage.Ringing:
+                        choices.Add(Shift2AnswerChoice(call, "INCOMING LINE 01", "📞 Answer call"));
+                        break;
+
+                    case CallStage.Inquiry:
+                        // Protocol first: get the caller's name before anything else
+                        if (!call.IdentityVerified)
+                        {
+                            choices.Add(Shift2Option("c1.name", "IDENTIFY", "📇 Ask for the caller's name",
+                                "CALLER 1: My name? I— sorry, I can barely think straight.\nCALLER 1: Please, I just need someone to come out here.",
+                                string.Empty,
+                                () =>
+                                {
+                                    call.IdentityVerified = true;
+                                    _lblCallerName.Text = $"▸ {call.DisplayName} ({call.CallId})";
+                                    UpdateQueueCards();
+                                }, recommended: true));
+                            break;
+                        }
+
+                        // Per the script: the landmark and street-record branches converge on the caller
+                        // asking if you're still there; the danger question loops back to the options.
+                        string[] locate = { "c1.landmark", "c1.records" };
+                        string LocateReply(string key, string reply) =>
+                            locate.Where(k => k != key).All(Shift2Asked)
+                                ? reply + "\n\nCALLER 1: Hello? Are you still there?\nCALLER 1: I haven't moved. I'm still beside the same sign."
+                                : reply;
+                        void AfterLocate()
+                        {
+                            if (locate.All(Shift2Asked)) call.Stage = CallStage.DiscrepancyChoice;
+                        }
+
+                        if (!Shift2Asked("c1.landmark"))
+                        {
+                            choices.Add(Shift2Option("c1.landmark", "LANDMARK", "📍 Ask for the nearest landmark",
+                                LocateReply("c1.landmark", "CALLER 1: There's a sign for the old water tower. I passed it a few minutes ago.\nSYSTEM: LOCATION CHECK: 2 MILES FROM WATER TOWER."),
+                                string.Empty,
+                                () =>
+                                {
+                                    call.AddressVerified = true;
+                                    _lblLocation.Text = $"LOCATION: {call.DisplayLocation}";
+                                    UpdateQueueCards();
+                                    AfterLocate();
+                                }, recommended: true));
+                        }
+                        else if (!Shift2Asked("c1.recheck"))
+                        {
+                            // [If the player checks the location again.]
+                            choices.Add(Shift2Option("c1.recheck", "RE-CHECK", "🔁 Check the location again",
+                                "SYSTEM: LOCATION CHECK: 5 MILES FROM WATER TOWER.",
+                                string.Empty));
+                        }
+                        if (!Shift2Asked("c1.danger"))
+                        {
+                            choices.Add(Shift2Option("c1.danger", "DANGER", "⚠ Ask about immediate danger",
+                                "CALLER 1: I'm not sure what to do. It's dark out here, and I need help getting off the road.",
+                                string.Empty));
+                        }
+                        if (!Shift2Asked("c1.records"))
+                        {
+                            choices.Add(Shift2Option("c1.records", "STREET RECORDS", "🗄 Check available street records",
+                                LocateReply("c1.records", "SYSTEM: LOCATION COULD NOT BE FULLY VERIFIED."),
+                                string.Empty,
+                                AfterLocate));
+                        }
+                        break;
+
+                    case CallStage.DiscrepancyChoice:
+                        // Flag and dispatch are alternatives; both end on the caller drifting away
+                        const string driftingAway = "\n\nCALLER 1: You said you could find me.\nCALLER 1: Why does it keep getting farther away?\n[The line crackles.]\nSYSTEM: SIGNAL UNSTABLE.";
+                        choices.Add(new ActionChoice
+                        {
+                            Tag = "FLAG",
+                            Caption = "🚩 Flag the inconsistent location data",
+                            BorderColor = Color.FromArgb(220, 120, 255),
+                            TagColor = Color.FromArgb(240, 190, 255),
+                            HoverBgColor = Color.FromArgb(220, 48, 16, 56),
+                            IsRecommended = true,
+                            OnClick = () =>
+                            {
+                                call.DiscrepancyFlagged = true;
+                                State.CluesFound++;
+                                if (!Profile.AnomalyFlags.Contains("ChangingDistance"))
+                                    Profile.AnomalyFlags.Add("ChangingDistance");
+                                AudioManager.Instance.PlayInkStamp();
+                                _lblClueBanner.Text = "⭐ EVIDENCE FLAGGED: ROUTE 9 — THE DISTANCE KEEPS CHANGING";
+                                _lblClueBanner.Visible = true;
+                                StartTypewriter(call.FlagResponse + driftingAway);
+                                Shift2ResolveCall(call);
+                            }
+                        });
+                        choices.Add(new ActionChoice
+                        {
+                            Tag = "DISPATCH",
+                            Caption = "🚓 Dispatch using last available information",
+                            BorderColor = Color.FromArgb(220, 180, 100),
+                            TagColor = Color.FromArgb(255, 215, 130),
+                            OnClick = () =>
+                            {
+                                string units = Shift2DispatchUnit(call);
+                                AudioManager.Instance.PlayInkStamp();
+                                StartTypewriter(units + "\nSYSTEM: DISPATCH LOCATION BASED ON LAST AVAILABLE INFORMATION." + driftingAway);
+                                Shift2ResolveCall(call);
+                            }
+                        });
+                        break;
+
+                    case CallStage.Resolved:
+                        choices.Add(Shift2NextCallChoice(1, "INCOMING LINE 02"));
+                        break;
+                }
+            }
+            else if (Scenario.ShiftNumber == 2 && _activeCallIndex == 1) // SHIFT 2 – CALL 02: Bell Street door
+            {
+                switch (call.Stage)
+                {
+                    case CallStage.Ringing:
+                        choices.Add(Shift2AnswerChoice(call, "URGENT INCOMING", "📞 Answer call"));
+                        break;
+
+                    case CallStage.Inquiry:
+                        if (!Shift2Asked("c2.safe"))
+                        {
+                            choices.Add(Shift2Option("c2.safe", "SAFETY", "🛡 Ask whether the caller is somewhere safe",
+                                "CALLER 2: I'm in my bedroom. I locked the door, too.\nCALLER 2: I can still hear someone moving around outside. Please, I don't think they know I'm here.",
+                                string.Empty,
+                                () =>
+                                {
+                                    call.PanicPercentage = Math.Max(20, call.PanicPercentage - 10);
+                                    _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
+                                }, recommended: true));
+                        }
+                        if (!Shift2Asked("c2.address"))
+                        {
+                            choices.Add(Shift2Option("c2.address", "ADDRESS", "📍 Ask for the address and nearby landmarks",
+                                "CALLER 2: Fourteen Bell Street. It's the house with the broken streetlight near the corner.\n\n" +
+                                "SYSTEM: ADDRESS RECEIVED: 14 BELL STREET.\nSYSTEM: ADDRESS STATUS: INCONSISTENT WITH RECENT RECORD.\n\n" +
+                                "CALLER 2: Is something wrong? That's where I live. I've lived here for years.",
+                                string.Empty,
+                                () =>
+                                {
+                                    call.IdentityVerified = true;
+                                    call.AddressVerified = true;
+                                    _lblCallerName.Text = $"▸ {call.DisplayName} ({call.CallId})";
+                                    _lblLocation.Text = $"LOCATION: {call.DisplayLocation}";
+                                    UpdateQueueCards();
+                                }, recommended: true));
+                        }
+                        if (!Shift2Asked("c2.entered"))
+                        {
+                            choices.Add(Shift2Option("c2.entered", "INTRUDER", "🚪 Ask whether the person has entered the house",
+                                "CALLER 2: No. Not yet.\nCALLER 2: I can hear them moving around outside. Every time I get close to the door, they stop.\nCALLER 2: I don't know what they want. They haven't said anything.",
+                                string.Empty));
+                        }
+                        if (!Shift2Asked("c2.log"))
+                        {
+                            choices.Add(Shift2Option("c2.log", "INCIDENT LOG", "🗄 Check the incident log",
+                                "SYSTEM: ADDRESS RECEIVED.\nSYSTEM: ADDRESS STATUS: INCONSISTENT WITH RECENT RECORD.",
+                                string.Empty));
+                        }
+                        // Per the script: "safe" and "address" loop back to the questions; the "entered"
+                        // and "incident log" branches converge on the two ways to handle the call
+                        if (Shift2Asked("c2.entered") && Shift2Asked("c2.log"))
+                        {
+                            choices.Add(new ActionChoice
+                            {
+                                Tag = "ASK CHARM",
+                                Caption = "🎧 Ask Charm for assistance with the call",
+                                BorderColor = Color.FromArgb(255, 160, 200),
+                                TagColor = Color.FromArgb(255, 195, 220),
+                                OnClick = () =>
+                                {
+                                    // The signal drops when "SYSTEM: CALLER DISCONNECTED." prints (see PlayNextSegment)
+                                    AudioManager.Instance.PlayFrequencyBlip();
+                                    StartTypewriter(
+                                        "CHARM: Of course. You check the record; I'll take over the caller.\n[Charm puts on her headset.]\n" +
+                                        "CHARM: Hello? I'm here. Can you tell me whether the door is still locked?\nCALLER 2: Yes.\n" +
+                                        "CHARM: Good. Stay somewhere safe while we work out the details.\n\n[A few seconds pass.]\n" +
+                                        "CHARM: Hm. The line's gone quiet.\nSYSTEM: CALLER DISCONNECTED.\n" +
+                                        "CHARM: That's odd. Maybe the connection dropped.\n[Charm removes her headset and smiles reassuringly.]\n" +
+                                        "CHARM: Don't look so worried. These old lines are unreliable.\n\n" +
+                                        $"[{Profile.OperatorName} checks the call record.]\n" +
+                                        "SYSTEM: CALL DISCONNECTED BEFORE RESPONSE CONFIRMATION.\nSYSTEM: OUTCOME UNCONFIRMED.\n\n" +
+                                        "CHARM: You know, you don't have to do everything alone. We're coworkers.\n" +
+                                        "CHARM: If something gets difficult, just ask. That's what I'm here for.\n[She returns to her console.]", charmAtConsole: true);
+                                    Shift2ResolveCall(call);
+                                }
+                            });
+                            choices.Add(new ActionChoice
+                            {
+                                Tag = "DISPATCH",
+                                Caption = "🚓 Dispatch a unit using the best available verified information",
+                                BorderColor = Color.FromArgb(255, 120, 120),
+                                TagColor = Color.FromArgb(255, 170, 170),
+                                HoverBgColor = Color.FromArgb(220, 60, 20, 20),
+                                IsRecommended = true,
+                                OnClick = () =>
+                                {
+                                    string units = Shift2DispatchUnit(call);
+                                    AudioManager.Instance.PlayInkStamp();
+                                    StartTypewriter(units + "\n\nCALLER 2: Okay. I'll stay away from the door.\n\n" +
+                                        "SYSTEM: DISPATCH RECORDED.\nSYSTEM: ADDRESS DISCREPANCY REMAINS UNRESOLVED.\nSYSTEM: CALL RECORD SAVED.\nSYSTEM: CALL 2 COMPLETE.");
+                                    Shift2ResolveCall(call);
+                                }
+                            });
+                        }
+                        break;
+
+                    case CallStage.Resolved:
+                        choices.Add(Shift2NextCallChoice(2, "INCOMING LINE 03"));
+                        break;
+                }
+            }
+            else if (Scenario.ShiftNumber == 2 && _activeCallIndex == 2) // SHIFT 2 – CALL 03: Chloe asking for Krisha
+            {
+                switch (call.Stage)
+                {
+                    case CallStage.Ringing:
+                        choices.Add(Shift2AnswerChoice(call, "UNKNOWN TRUNK", "📞 Answer call"));
+                        break;
+
+                    case CallStage.Inquiry:
+                        // Tier 1: who is calling and why. All three branches converge (per the script)
+                        // on Chloe asking where Krisha is, and only then do the next questions open up.
+                        string[] tier1 = { "c3.offshift", "c3.name", "c3.assist" };
+                        bool tier1Done = tier1.All(Shift2Asked);
+                        string Tier1Reply(string key, string reply) =>
+                            tier1.Where(k => k != key).All(Shift2Asked)
+                                ? reply + "\n\nCHLOE: You don't know where she is?\nCHLOE: She said someone would answer tonight. She told me to call back if it happened again."
+                                : reply;
+
+                        if (!Shift2Asked("c3.offshift"))
+                        {
+                            choices.Add(Shift2Option("c3.offshift", "KRISHA", "💬 Tell the caller Krisha is no longer on shift",
+                                Tier1Reply("c3.offshift", "CHLOE: She's not there?\nCHLOE: But she said someone would answer tonight.\nCHLOE: She told me to call back if it happened again."),
+                                string.Empty));
+                        }
+                        if (!Shift2Asked("c3.name"))
+                        {
+                            choices.Add(Shift2Option("c3.name", "IDENTIFY", "📍 Ask for the caller's name and reason for calling",
+                                Tier1Reply("c3.name", "CHLOE: Chloe.\nCHLOE: I need to speak to Krisha. She knows about it.\nCHLOE: She told me to call back if it happened again."),
+                                string.Empty,
+                                () =>
+                                {
+                                    call.IdentityVerified = true;
+                                    _lblCallerName.Text = $"▸ {call.DisplayName} ({call.CallId})";
+                                    UpdateQueueCards();
+                                }, recommended: true));
+                        }
+                        if (!Shift2Asked("c3.assist"))
+                        {
+                            choices.Add(Shift2Option("c3.assist", "ASSISTANCE", "⚠ Ask whether they need immediate assistance",
+                                Tier1Reply("c3.assist", "CHLOE: I... I think so.\nCHLOE: I don't know if it's happening again.\nCHLOE: Krisha said someone would answer if I called."),
+                                string.Empty));
+                        }
+
+                        // Tier 2: what happened, where, and what the records say
+                        if (tier1Done)
+                        {
+                            if (!Shift2Asked("c3.what"))
+                            {
+                                choices.Add(Shift2Option("c3.what", "WHAT HAPPENED", "❓ Ask what happened",
+                                    "CHLOE: I heard it again.\nCHLOE: At first, I thought it was outside. Then I heard it near the door.\nCHLOE: I called before, but nobody came.\nCHLOE: Krisha said she'd write everything down.",
+                                    string.Empty));
+                            }
+                            if (!Shift2Asked("c3.address"))
+                            {
+                                choices.Add(Shift2Option("c3.address", "ADDRESS", "📍 Ask for the address",
+                                    "CHLOE: Fourteen Bell Street.\n\nSYSTEM: ADDRESS NOT FOUND IN CURRENT DATABASE.\n\n" +
+                                    "CHLOE: That's what it said last time.\nCHLOE: Krisha told me not to worry about it. She said she'd write everything down.",
+                                    string.Empty,
+                                    recommended: true));
+                            }
+                            if (!Shift2Asked("c3.records"))
+                            {
+                                choices.Add(Shift2Option("c3.records", "RECORDS", "🗄 Check the previous incident records",
+                                    call.LogResponse,
+                                    string.Empty));
+                            }
+                        }
+
+                        // Tier 3: once all of tier 2 is asked. Both questions converge (per the script)
+                        // on Charmee noticing you, which leads to the player action.
+                        string[] tier3 = { "c3.danger", "c3.surroundings" };
+                        bool tier3Done = tier3.All(Shift2Asked);
+                        string Tier3Reply(string key, string reply) =>
+                            tier3.Where(k => k != key).All(Shift2Asked)
+                                ? reply + $"\n\nCHARM: Hey, are you okay?\n[Charm is looking at {Profile.OperatorName}, not at her own screen.]\nCHARM: You look like you've seen a ghost."
+                                : reply;
+
+                        bool tier2Done = new[] { "c3.what", "c3.address", "c3.records" }.All(Shift2Asked);
+                        if (tier2Done)
+                        {
+                            if (!Shift2Asked("c3.danger"))
+                            {
+                                choices.Add(Shift2Option("c3.danger", "DANGER", "⚠ Ask whether Chloe is in immediate danger",
+                                    Tier3Reply("c3.danger", "CHLOE: I don't know.\nCHLOE: I can hear something, but I can't tell where it's coming from.\nCHLOE: I'm inside.\nCHLOE: I'm trying to stay away from the door."),
+                                    string.Empty));
+                            }
+                            if (!Shift2Asked("c3.surroundings"))
+                            {
+                                choices.Add(Shift2Option("c3.surroundings", "SURROUNDINGS", "👁 Ask her to describe her surroundings",
+                                    Tier3Reply("c3.surroundings", call.TraceResponse),
+                                    string.Empty,
+                                    recommended: true));
+                            }
+                        }
+
+                        // PLAYER ACTION: Show Charm the call record
+                        if (tier3Done)
+                        {
+                            choices.Add(new ActionChoice
+                            {
+                                Tag = "PLAYER ACTION",
+                                Caption = "📋 Show Charm the call record",
+                                BorderColor = Color.FromArgb(220, 120, 255),
+                                TagColor = Color.FromArgb(240, 190, 255),
+                                HoverBgColor = Color.FromArgb(220, 48, 16, 56),
+                                IsRecommended = true,
+                                OnClick = () =>
+                                {
+                                    call.DiscrepancyFlagged = true;
+                                    State.CluesFound++;
+                                    if (!Profile.AnomalyFlags.Contains("ChloeKrishaConnection"))
+                                        Profile.AnomalyFlags.Add("ChloeKrishaConnection");
+                                    AudioManager.Instance.PlayInkStamp();
+                                    _lblClueBanner.Text = "⭐ EVIDENCE FLAGGED: CHLOE REMEMBERS KRISHA — 14 BELL STREET";
+                                    _lblClueBanner.Visible = true;
+                                    StartTypewriter("CHARM: Fourteen Bell Street?\n[For a brief moment, Charm stops smiling.]\n" +
+                                        "CHARM: Oh. That's the address from your first night, isn't it?\nCHARM: Weird coincidence.\n[She smiles again.]\n" +
+                                        "CHARM: Well, if it isn't in the system, there probably isn't much we can do until we verify it. Right?\n\n" +
+                                        call.FlagResponse);
+                                    Shift2ResolveCall(call);
+                                }
+                            });
+                        }
+                        break;
+
+                    case CallStage.Resolved:
+                        if (!Shift2Asked("endshift"))
+                        {
+                            choices.Add(Shift2Option("endshift", "03:00 AM", "☕ End-of-shift conversation",
+                                "[03:00 AM — Dispatch Center]\n\n" +
+                                "CHARM: Well, that was fun.\n" +
+                                "CHARM: A stranded driver whose location won't stay still, someone at a door, and a caller who knows your missing trainer.\n" +
+                                "CHARM: You know, when I started here, my weirdest call was a man who reported his own car stolen while he was sitting inside it.\n" +
+                                "[She laughs.]\nCHARM: I wish I were joking.\n\n" +
+                                $"[{Profile.OperatorName} looks toward Ysa's empty console.]\n\n" +
+                                "CHARM: Hey. We'll find out what happened eventually.\nCHARM: Until then, let's just do our jobs, okay?",
+                                string.Empty, recommended: true));
+                        }
+                        else
+                        {
+                            choices.Add(new ActionChoice
+                            {
+                                Tag = "SHIFT COMPLETE",
+                                Caption = "📋 FINISH SHIFT 2",
+                                BorderColor = Color.FromArgb(140, 255, 180),
+                                TagColor = Color.FromArgb(180, 255, 210),
+                                HoverBgColor = Color.FromArgb(240, 24, 60, 30),
+                                IsRecommended = true,
+                                OnClick = () => ShowDebriefModal()
+                            });
+                        }
+                        break;
+                }
+            }
+
             SetDynamicActionChoices(choices);
+            UpdatePhoneRing();
+        }
+
+        /// <summary>
+        /// The phone rings only while the current line is ringing (not yet answered),
+        /// and never under the end-of-shift report or for the locked Line 08.
+        /// </summary>
+        private void UpdatePhoneRing()
+        {
+            var call = CurrentCall;
+            bool reportOpen = _pnlDebriefModal != null && _pnlDebriefModal.Visible;
+            bool ringing = !reportOpen && !call.IsRestricted &&
+                           call.Stage == CallStage.Ringing && call.Status != CallQueueStatus.Resolved;
+
+            if (ringing) AudioManager.Instance.StartPhoneRing();
+            else AudioManager.Instance.StopPhoneRing();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            AudioManager.Instance.StopPhoneRing();
+            base.OnFormClosed(e);
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // SHIFT 2 HELPERS
+        // ══════════════════════════════════════════════════════════════
+        private readonly HashSet<string> _shift2Asked = new();
+
+        private bool Shift2Asked(string key) => _shift2Asked.Contains(key);
+
+        private ActionChoice Shift2AnswerChoice(EmergencyCall call, string tag, string caption) => new ActionChoice
+        {
+            Tag = tag,
+            Caption = caption,
+            BorderColor = Color.FromArgb(120, 220, 180),
+            TagColor = Color.FromArgb(160, 255, 200),
+            HoverBgColor = Color.FromArgb(220, 20, 50, 36),
+            IsRecommended = true,
+            OnClick = () =>
+            {
+                call.Stage = CallStage.Inquiry;
+                call.Status = CallQueueStatus.Live;
+                AudioManager.Instance.PlayKeyClick();
+                StartTypewriter(call.InitialDialogue);
+                if (call.SupervisorHint.Length > 0) _lblSupervisorBar.Text = call.SupervisorHint;
+                UpdateQueueCards();
+                UpdateDynamicChoices();
+            }
+        };
+
+        private ActionChoice Shift2Option(string key, string tag, string caption, string response, string charmLine, Action? onAsked = null, bool recommended = false) => new ActionChoice
+        {
+            Tag = tag,
+            Caption = caption,
+            BorderColor = Color.FromArgb(255, 215, 120),
+            TagColor = Color.FromArgb(255, 230, 140),
+            IsRecommended = recommended,
+            OnClick = () =>
+            {
+                _shift2Asked.Add(key);
+                onAsked?.Invoke();
+                AudioManager.Instance.PlayTypewriterKeystroke();
+                StartTypewriter(response);
+                if (charmLine.Length > 0) _lblSupervisorBar.Text = charmLine;
+                UpdateDynamicChoices();
+            }
+        };
+
+        private ActionChoice Shift2NextCallChoice(int nextIndex, string tag) => new ActionChoice
+        {
+            Tag = tag,
+            Caption = "🔔 Wait for the next call to ring",
+            BorderColor = Color.FromArgb(140, 200, 255),
+            TagColor = Color.FromArgb(180, 225, 255),
+            HoverBgColor = Color.FromArgb(220, 16, 36, 52),
+            IsRecommended = true,
+            OnClick = () => SelectCall(nextIndex)
+        };
+
+        private string Shift2DispatchUnit(EmergencyCall call)
+        {
+            call.UnitDispatched = true;
+            if (State.AvailableUnits > 0) State.AvailableUnits--;
+            return $"SYSTEM: UNIT ASSIGNED.\nSYSTEM: REMAINING UNITS: {State.AvailableUnits}.";
+        }
+
+        private void Shift2ResolveCall(EmergencyCall call)
+        {
+            call.Stage = CallStage.Resolved;
+            call.Status = CallQueueStatus.Resolved;
+            State.CallsLogged++;
+            UpdateQueueCards();
+            UpdateDynamicChoices();
         }
 
         private void UpdateTutorialGuidance()
         {
+            // Guide arrows belong to the tutorial shift only
+            if (!Scenario.HasTutorialGuidance)
+            {
+                _lblGuideArrow.Visible = false;
+                return;
+            }
+
             var call = CurrentCall;
 
             // 1. Live Protocol Checklist Across Top
@@ -1752,6 +2313,13 @@ namespace StayOnTheLine.Forms
             {
                 _lblGuideArrow.Visible = false;
             }
+
+            // No room beside the button: the glowing [►] button already guides the player,
+            // so hide the arrow rather than letting it spill off the CRT or cover the readouts
+            if (_lblGuideArrow.Visible && _lblGuideArrow.Right > _pnlCrtScreen.ClientSize.Width - 4)
+            {
+                _lblGuideArrow.Visible = false;
+            }
         }
 
         private void UpdatePanicDecay()
@@ -1814,7 +2382,7 @@ namespace StayOnTheLine.Forms
                     }
                     if (card.Controls[1] is Label lblLine)
                     {
-                        lblLine.Text = $"{call.CallId}\n{call.DisplayLocation}";
+                        lblLine.Text = $"{call.CallId}\n{QueueLocationText(call)}";
                         lblLine.ForeColor = isActive ? Color.FromArgb(235, 250, 230)
                                           : isResolved ? Color.FromArgb(130, 150, 135)
                                           : Color.FromArgb(210, 225, 205);
@@ -1859,22 +2427,227 @@ namespace StayOnTheLine.Forms
             }
         }
 
-        private void StartTypewriter(string text)
+        private static bool IsCharmLine(string line)
         {
-            _targetDialogue = text;
-            _displayedDialogue = string.Empty;
-            _typewriterCharIndex = 0;
-            _transcriptScrollY = 0;
-            _lblCallTranscript.Location = new Point(14, 8);
-            _typewriterTimer.Start();
+            string t = line.TrimStart();
+            return t.StartsWith("CHARM:", StringComparison.OrdinalIgnoreCase) ||
+                   t.StartsWith("CHARMEE:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Stage directions about the room (not the phone line) belong with Charmee's pop-up
+        private static bool IsRoomNarration(string line)
+        {
+            string t = line.Trim();
+            return t.StartsWith("[") &&
+                   (t.Contains("Charm", StringComparison.OrdinalIgnoreCase) ||
+                    t.StartsWith("[She ", StringComparison.Ordinal) ||
+                    t.StartsWith("[Her ", StringComparison.Ordinal) ||
+                    t.StartsWith("[You ", StringComparison.Ordinal));
+        }
+
+        private Image? CharmPortraitFor(string line)
+        {
+            string l = line.ToLowerInvariant();
+            string expression =
+                (l.Contains("laugh") || l.Contains("joking") || l.Contains("fun") || l.Contains("stolen")) ? "giggle" :
+                (l.Contains("strange") || l.Contains("odd") || l.Contains("quiet") || l.Contains("ghost") ||
+                 l.Contains("weird") || l.Contains("fourteen bell") || l.Contains("since when") || l.Contains("hm.")) ? "serious" :
+                (l.Contains("don't worry") || l.Contains("coffee") || l.Contains("here for") || l.Contains("coworkers") ||
+                 l.Contains("okay?") || l.Contains("good.") || l.Contains("right here")) ? "smile" :
+                "default";
+
+            if (!_charmPortraits.TryGetValue(expression, out var img))
+            {
+                img = TryLoadImage($"charm_{expression}.png") ?? TryLoadImage("charm_default.png");
+                _charmPortraits[expression] = img;
+            }
+            return img;
+        }
+
+        /// <summary>
+        /// Splits a response into ordered segments: runs of caller/system lines for the CRT and
+        /// runs of Charmee's lines (plus room narration around her) for her pop-up.
+        /// </summary>
+        private List<ScriptSegment> SplitScript(string text, bool charmAtConsole)
+        {
+            var lines = text.Replace("\r\n", "\n").Split('\n');
+            var segments = new List<ScriptSegment>();
+            if (Scenario.HasTutorialGuidance || !lines.Any(IsCharmLine))
+            {
+                segments.Add(new ScriptSegment(text, null));
+                return segments;
+            }
+
+            bool roomOnly = lines.All(l => string.IsNullOrWhiteSpace(l) || IsCharmLine(l) || l.TrimStart().StartsWith("["));
+            List<string>? crt = null;
+            List<(string, string)>? charm = null;
+
+            void FlushCrt()
+            {
+                if (crt == null) return;
+                while (crt.Count > 0 && string.IsNullOrWhiteSpace(crt[^1])) crt.RemoveAt(crt.Count - 1);
+                if (crt.Count > 0) segments.Add(new ScriptSegment(string.Join("\n", crt), null));
+                crt = null;
+            }
+            void FlushCharm()
+            {
+                if (charm == null) return;
+                if (charm.Count > 0) segments.Add(new ScriptSegment(null, charm, charmAtConsole));
+                charm = null;
+            }
+
+            foreach (var line in lines)
+            {
+                bool isCharm = IsCharmLine(line);
+                bool isRoom = !isCharm && !string.IsNullOrWhiteSpace(line) &&
+                              line.TrimStart().StartsWith("[") && (roomOnly || IsRoomNarration(line));
+
+                if (isCharm || isRoom)
+                {
+                    FlushCrt();
+                    charm ??= new List<(string, string)>();
+                    if (isCharm)
+                    {
+                        string body = line.Substring(line.IndexOf(':') + 1).Trim();
+                        _charmQueuedLines.Add(body);
+                        charm.Add(("CHARMEE", body));
+                    }
+                    else
+                    {
+                        charm.Add((string.Empty, line.Trim()));
+                    }
+                }
+                else if (string.IsNullOrWhiteSpace(line))
+                {
+                    // Keep paragraph breaks inside a CRT run only
+                    if (crt != null && crt.Count > 0 && !string.IsNullOrWhiteSpace(crt[^1])) crt.Add(string.Empty);
+                }
+                else
+                {
+                    FlushCharm();
+                    crt ??= new List<string>();
+                    crt.Add(line);
+                }
+            }
+            FlushCrt();
+            FlushCharm();
+            return segments;
+        }
+
+        private void SetCallSignal(string status)
+        {
+            CurrentCall.SignalStatus = status;
+            _lblSignal.Text = $"SIGNAL: {status}";
+            _lblCallSignalTag.Text = $"[ SIGNAL {status} ]";
+        }
+
+        /// <summary>Plays the next queued segment, once the CRT and Charmee are both idle.</summary>
+        private void PlayNextSegment()
+        {
+            if (_typewriterTimer.Enabled || _charmDialogue.IsActive) return;
+            if (_scriptSegments.Count == 0) return;
+
+            var seg = _scriptSegments.Dequeue();
+            if (seg.CrtText != null)
+            {
+                // The signal readout changes at the moment the transcript says so, not before
+                if (seg.CrtText.Contains("SYSTEM: CALLER DISCONNECTED", StringComparison.Ordinal))
+                    SetCallSignal("DISCONNECTED");
+                else if (seg.CrtText.Contains("SYSTEM: SIGNAL UNSTABLE", StringComparison.Ordinal))
+                    SetCallSignal("UNSTABLE");
+
+                if (_freshTranscriptPending)
+                {
+                    _freshTranscriptPending = false;
+                    _targetDialogue = seg.CrtText;
+                    _displayedDialogue = string.Empty;
+                    _typewriterCharIndex = 0;
+                    _transcriptScrollY = 0;
+                    _lblCallTranscript.Location = new Point(14, 8);
+                }
+                else
+                {
+                    // Continue the same transcript after Charmee's interjection
+                    _targetDialogue += "\n\n" + seg.CrtText;
+                }
+                _typewriterTimer.Start();
+            }
+            else if (seg.CharmLines != null)
+            {
+                _charmDialogue.Docked = seg.Docked;
+                LayoutCharmDialogue();
+                foreach (var (speaker, line) in seg.CharmLines)
+                {
+                    _charmDialogue.Enqueue(speaker, line, speaker.Length > 0 ? CharmPortraitFor(line) : null);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Outside the tutorial, CHARM hint-bar lines are dropped (they are not in the script):
+        /// the bar keeps showing the last system note instead.
+        /// </summary>
+        private void RouteCharmHint()
+        {
+            if (_charmDialogue == null || Scenario.HasTutorialGuidance) return;
+
+            string text = _lblSupervisorBar.Text;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                _lblSupervisorBar.Text = _lastSystemBarText;
+                return;
+            }
+            if (!IsCharmLine(text))
+            {
+                _lastSystemBarText = text;
+                return;
+            }
+
+            // Hint-bar lines are not part of the Shift script, so Charmee does not say them;
+            // she only speaks the CHARM lines written into the call transcripts.
+            _lblSupervisorBar.Text = _lastSystemBarText;
+        }
+
+        /// <param name="charmAtConsole">
+        /// Charmee's lines show in the compact strip under the computer (she is working the line
+        /// with you) instead of the full-screen room scene.
+        /// </param>
+        private void StartTypewriter(string text, bool charmAtConsole = false)
+        {
+            // A new response supersedes whatever was still waiting to play; finish printing the
+            // current reply first so it isn't left cut off mid-word
+            if (_typewriterTimer.Enabled)
+            {
+                _displayedDialogue = _targetDialogue;
+                _typewriterCharIndex = _targetDialogue.Length;
+                _lblCallTranscript.Text = _displayedDialogue;
+            }
+            _typewriterTimer.Stop();
+            _scriptSegments.Clear();
+            _charmQueuedLines.Clear();
+            _charmDialogue.Clear();
+
+            foreach (var seg in SplitScript(text, charmAtConsole)) _scriptSegments.Enqueue(seg);
+
+            // The transcript is replaced by the first CRT segment; if only Charmee speaks, it stays as is
+            _freshTranscriptPending = true;
+            PlayNextSegment();
         }
 
         private void UpdateTypewriter()
         {
             if (_typewriterCharIndex < _targetDialogue.Length)
             {
-                _displayedDialogue += _targetDialogue[_typewriterCharIndex];
-                _typewriterCharIndex++;
+                if (SettingsManager.Instance.Current.GetDelayPerCharacterMs() == 0)
+                {
+                    _displayedDialogue += _targetDialogue.Substring(_typewriterCharIndex);
+                    _typewriterCharIndex = _targetDialogue.Length;
+                }
+                else
+                {
+                    _displayedDialogue += _targetDialogue[_typewriterCharIndex];
+                    _typewriterCharIndex++;
+                }
                 _lblCallTranscript.Text = _displayedDialogue;
 
                 // Follow typewriter downwards so the latest typed line is visible
@@ -1884,7 +2657,7 @@ namespace StayOnTheLine.Forms
                 _transcriptScrollY = maxScroll;
                 _lblCallTranscript.Location = new Point(14, 8 - _transcriptScrollY);
 
-                if (_typewriterCharIndex % 3 == 0)
+                if (_typewriterCharIndex % 5 == 0)
                 {
                     AudioManager.Instance.PlayTypewriterKeystroke();
                 }
@@ -1897,6 +2670,9 @@ namespace StayOnTheLine.Forms
                 int maxScroll = Math.Max(0, totalH - visibleH);
                 _transcriptScrollY = maxScroll;
                 _lblCallTranscript.Location = new Point(14, 8 - _transcriptScrollY);
+
+                // The caller has finished: Charmee may speak now
+                PlayNextSegment();
             }
         }
 
@@ -2013,6 +2789,63 @@ namespace StayOnTheLine.Forms
             g.DrawImage(img, rc);
         }
 
+        /// <summary>
+        /// Full-screen room scene by default; a strip under the computer when docked.
+        /// </summary>
+        private void LayoutCharmDialogue()
+        {
+            int W = ClientSize.Width, H = ClientSize.Height;
+            if (W <= 0 || H <= 0) return;
+
+            if (_charmDialogue.Docked)
+            {
+                int dlgH = Math.Clamp((int)(H * 0.21f), 120, 300);
+                int dlgW = Math.Min(W - (int)(W * 0.08f), (int)(dlgH * 6.2f));
+                _charmDialogue.Bounds = new Rectangle((W - dlgW) / 2, H - dlgH - (int)(H * 0.025f), dlgW, dlgH);
+            }
+            else
+            {
+                _charmDialogue.Bounds = ClientRectangle;
+            }
+            if (_charmDialogue.Visible) _charmDialogue.BringToFront();
+            _charmDialogue.Invalidate();
+        }
+
+        private void LayoutDeskHeader(float deskScale, bool fontsChanged)
+        {
+            float s = Math.Clamp(deskScale, 0.6f, 2f);
+            _pnlDeskHeader.Height = Math.Max(40, (int)(60 * s));
+            if (fontsChanged) _lblDeskHeaderTitle.Font = FontManager.GetSmallCapsFont(15f * s, FontStyle.Bold);
+            _lblDeskHeaderTitle.Padding = new Padding((int)(24 * s), 0, 0, 0);
+
+            // Right-hand buttons sized to their text so they never wrap onto two lines
+            int pad = (int)(28 * s);
+            foreach (var (btn, size, style) in new[]
+            {
+                (_btnDeskSettings, 13f, FontStyle.Regular),
+                (_btnDeskManual, 13f, FontStyle.Bold),
+                (_btnDeskEndShift, 13f, FontStyle.Bold)
+            })
+            {
+                if (fontsChanged) btn.Font = FontManager.GetSmallCapsFont(size * s, style);
+                btn.Width = TextRenderer.MeasureText(btn.Text, btn.Font).Width + pad;
+            }
+
+            int buttonsW = _btnDeskSettings.Width + _btnDeskManual.Width + _btnDeskEndShift.Width;
+            int titleW = Math.Max(100, ClientSize.Width - buttonsW - (int)(12 * s));
+            _lblDeskHeaderTitle.Width = titleW;
+
+            // Shrink the title until it sits on a single line beside the buttons
+            int textRoom = titleW - _lblDeskHeaderTitle.Padding.Horizontal - 4;
+            float titleSize = 15f * s;
+            while (titleSize > 9f * s &&
+                   TextRenderer.MeasureText(_lblDeskHeaderTitle.Text, _lblDeskHeaderTitle.Font).Width > textRoom)
+            {
+                titleSize -= 0.5f;
+                _lblDeskHeaderTitle.Font = FontManager.GetSmallCapsFont(titleSize, FontStyle.Bold);
+            }
+        }
+
         private void ApplyResponsiveLayout()
         {
             if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
@@ -2027,6 +2860,7 @@ namespace StayOnTheLine.Forms
                 _btnBackToDesk.Visible = false;
                 _btnTerminalSettings.Visible = false;
                 _btnTerminalEndShift.Visible = false;
+                if (_lblDeskStickyNote != null) _lblDeskStickyNote.Visible = false;
                 return;
             }
 
@@ -2041,16 +2875,30 @@ namespace StayOnTheLine.Forms
             int H = ClientSize.Height;
             float deskScale = H / 1080f;
 
+            if (_charmDialogue != null)
+            {
+                _charmDialogue.SceneBackground ??= _imgDeskRoom;
+                LayoutCharmDialogue();
+            }
+
+            bool deskFontsChanged = Math.Abs(deskScale - _deskFontScale) > 0.01f;
+            _deskFontScale = deskScale;
+            LayoutDeskHeader(deskScale, deskFontsChanged);
+
             // 1. Desk Hotspot Placement (over the glowing terminal desk in maingameplay_bg.png)
-            int spotW = (int)(540 * deskScale);
-            int spotH = (int)(76 * deskScale);
+            if (deskFontsChanged) _lblDeskHotspot.Font = FontManager.GetSmallCapsFont(14f * deskScale, FontStyle.Bold);
+            var spotText = TextRenderer.MeasureText(_lblDeskHotspot.Text, _lblDeskHotspot.Font);
+            int spotW = Math.Min(W - 32, Math.Max((int)(540 * deskScale), spotText.Width + (int)(48 * deskScale)));
+            int spotH = Math.Max((int)(76 * deskScale), spotText.Height + (int)(24 * deskScale));
             _lblDeskHotspot.Size = new Size(spotW, spotH);
             _lblDeskHotspot.Location = new Point((W - spotW) / 2, (int)(H * 0.72f));
 
             if (_lblDeskBookHotspot != null)
             {
-                int bookW = (int)(460 * deskScale);
-                int bookH = (int)(44 * deskScale);
+                if (deskFontsChanged) _lblDeskBookHotspot.Font = FontManager.GetSmallCapsFont(12.5f * deskScale, FontStyle.Bold);
+                var bookText = TextRenderer.MeasureText(_lblDeskBookHotspot.Text, _lblDeskBookHotspot.Font);
+                int bookW = Math.Min(W - 32, Math.Max((int)(460 * deskScale), bookText.Width + (int)(40 * deskScale)));
+                int bookH = Math.Max((int)(44 * deskScale), bookText.Height + (int)(16 * deskScale));
                 _lblDeskBookHotspot.Size = new Size(bookW, bookH);
                 _lblDeskBookHotspot.Location = new Point((W - bookW) / 2, _lblDeskHotspot.Bottom + (int)(10 * deskScale));
             }
@@ -2088,8 +2936,9 @@ namespace StayOnTheLine.Forms
                     // Position tactile sticky note over the drawn note in the bottom right of the desk
                     if (_lblDeskStickyNote != null)
                     {
-                        _lblDeskStickyNote.Location = new Point(imgRect.X + (int)(528 * factor), imgRect.Y + (int)(428 * factor));
-                        _lblDeskStickyNote.Size = new Size((int)(54 * factor), (int)(28 * factor));
+                        if (deskFontsChanged) _lblDeskStickyNote.Font = FontManager.GetSmallCapsFont(Math.Max(6f, 3.6f * factor), FontStyle.Bold);
+                        _lblDeskStickyNote.Location = new Point(imgRect.X + (int)(524 * factor), imgRect.Y + (int)(424 * factor));
+                        _lblDeskStickyNote.Size = new Size((int)(64 * factor), (int)(34 * factor));
                     }
                 }
                 else
@@ -2133,6 +2982,7 @@ namespace StayOnTheLine.Forms
             _pnlCrtScreen.Size = new Size(crtW, crtH);
 
             float scale = crtScale;
+            ApplyCrtFontScale(Math.Clamp(crtH / 695f, 0.6f, 2f));
 
             // Controls inside CRT Screen
             int pad = (int)(16 * scale);
@@ -2205,7 +3055,7 @@ namespace StayOnTheLine.Forms
             }
             else
             {
-                actBtnH = Math.Clamp((int)(56 * scale), 46, 68);
+                actBtnH = Math.Clamp((int)(66 * scale), 52, 80);
                 int btnGapY = (int)(6 * scale);
                 btnAreaH = actBtnH * 2 + btnGapY;
                 btnAreaY = btnAreaBottom - btnAreaH;
@@ -2291,12 +3141,16 @@ namespace StayOnTheLine.Forms
                 card.Size = new Size(queueW - 8, cardH);
                 if (card.Controls.Count >= 3)
                 {
-                    int badgeW = (int)(80 * scale);
-                    card.Controls[0].Size = new Size((int)(34 * scale), cardH);
-                    card.Controls[1].Location = new Point((int)(38 * scale), (int)(6 * scale));
-                    card.Controls[1].Size = new Size(card.Width - (int)(42 * scale) - badgeW - 6, cardH - (int)(10 * scale));
-                    card.Controls[2].Location = new Point(card.Width - badgeW - 4, (cardH - (int)(22 * scale)) / 2);
-                    card.Controls[2].Size = new Size(badgeW, (int)(22 * scale));
+                    // Number and badge are sized from their text so "01" and "RESTRICTED" never wrap or clip
+                    int numW = TextRenderer.MeasureText("00", card.Controls[0].Font).Width + (int)(6 * scale);
+                    int badgeW = TextRenderer.MeasureText("RESTRICTED", card.Controls[2].Font).Width + 4;
+                    int badgeH = card.Controls[2].Font.Height + 4;
+                    card.Controls[0].Location = new Point(2, 0);
+                    card.Controls[0].Size = new Size(numW, cardH - 2);
+                    card.Controls[1].Location = new Point(numW + 4, (int)(6 * scale));
+                    card.Controls[1].Size = new Size(Math.Max(20, card.Width - numW - badgeW - 14), cardH - (int)(10 * scale));
+                    card.Controls[2].Location = new Point(card.Width - badgeW - 6, (cardH - badgeH) / 2);
+                    card.Controls[2].Size = new Size(badgeW, badgeH);
                 }
             }
 
@@ -2306,12 +3160,16 @@ namespace StayOnTheLine.Forms
 
         public void ShowDebriefModal()
         {
+            AudioManager.Instance.StopPhoneRing();
+            _scriptSegments.Clear();
+            _charmDialogue.Clear();
             _pnlCrtScreen.Visible = false;
             _pnlDeskHeader.Visible = false;
             _lblDeskHotspot.Visible = false;
             _btnBackToDesk.Visible = false;
             _btnTerminalSettings.Visible = false;
             _btnTerminalEndShift.Visible = false;
+            if (_lblDeskStickyNote != null) _lblDeskStickyNote.Visible = false;
             _shiftTimer.Stop();
             _panicDecayTimer.Stop();
             _typewriterTimer.Stop();
@@ -2510,12 +3368,12 @@ namespace StayOnTheLine.Forms
                 foreach (var c in _calls) { if (c.HasDiscrepancy) totalClues++; }
                 if (totalClues == 0) totalClues = 1;
 
-                DrawCell(0, 0, "Calls handled", $"0{callsHandled} / 0{_calls.Count}");
-                DrawCell(0, 1, "Correct emergency", $"0{callsHandled} / 0{_calls.Count}");
-                DrawCell(1, 0, "Protocol errors", $"0{State.Errors}");
-                DrawCell(1, 1, "Units remaining", $"0{State.AvailableUnits} / 0{Scenario.InitialUnits}");
+                DrawCell(0, 0, "Calls handled", $"{callsHandled:D2} / {_calls.Count:D2}");
+                DrawCell(0, 1, "Correct emergency", $"{callsHandled:D2} / {_calls.Count:D2}");
+                DrawCell(1, 0, "Protocol errors", $"{State.Errors:D2}");
+                DrawCell(1, 1, "Units remaining", $"{State.AvailableUnits:D2} / {Scenario.InitialUnits:D2}");
                 DrawCell(2, 0, "Caller trust", $"{avgTrust}%");
-                DrawCell(2, 1, "Evidence found", $"0{State.CluesFound} / 0{totalClues}");
+                DrawCell(2, 1, "Evidence found", $"{State.CluesFound:D2} / {totalClues:D2}");
 
                 currY += gridH + (int)(20 * scale);
 
@@ -2560,9 +3418,9 @@ namespace StayOnTheLine.Forms
                 using var fontNoteBody = FontManager.GetItalicFont(12.5f * scale);
                 var noteBodyCol = Color.FromArgb(34, 26, 20);
                 int noteW = contentW - stampW - (int)(16 * scale);
-                int noteH = (int)(78 * scale);
-                var rNoteBody = new Rectangle(contentX, currY, noteW, noteH);
                 string supervisorNote = Scenario.GetDebriefMessage(State);
+                int noteH = Math.Max((int)(78 * scale), (int)Math.Ceiling(g.MeasureString(supervisorNote, fontNoteBody, noteW).Height) + (int)(4 * scale));
+                var rNoteBody = new Rectangle(contentX, currY, noteW, noteH);
                 using var noteBrush = new SolidBrush(noteBodyCol);
                 using var noteSf = new StringFormat { Trimming = StringTrimming.Word };
                 g.DrawString(supervisorNote, fontNoteBody, noteBrush, rNoteBody, noteSf);
@@ -2589,7 +3447,10 @@ namespace StayOnTheLine.Forms
                     int ry = currY + i * rowH2;
                     var rRow = new Rectangle(contentX + (int)(4 * scale), ry, contentW - (int)(8 * scale), rowH2);
 
-                    string linePrefix = $"LINE 0{(i + 1)}: {c.CallerName} ({c.DisplayLocation})";
+                    string place = c.IsRestricted ? "SOURCE CLASSIFIED" : c.AddressVerified ? c.Location : "LOCATION UNVERIFIED";
+                    string linePrefix = c.IsRestricted
+                        ? $"LINE {(i + 1):D2}: {c.CallerName}"
+                        : $"LINE {(i + 1):D2}: {c.CallerName} — {place}";
                     string lineOutcome;
                     Color outcomeCol;
 
@@ -2617,7 +3478,9 @@ namespace StayOnTheLine.Forms
                         outcomeCol = Color.FromArgb(160, 110, 30);
                     }
 
-                    TextRenderer.DrawText(g, linePrefix, fontLedgerRow, rRow, Color.FromArgb(50, 42, 35), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                    int outcomeW = TextRenderer.MeasureText(lineOutcome, fontLedgerBold).Width;
+                    var rPrefix = new Rectangle(rRow.X, rRow.Y, Math.Max(10, rRow.Width - outcomeW - (int)(10 * scale)), rRow.Height);
+                    TextRenderer.DrawText(g, linePrefix, fontLedgerRow, rPrefix, Color.FromArgb(50, 42, 35), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                     TextRenderer.DrawText(g, lineOutcome, fontLedgerBold, rRow, outcomeCol, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
                 }
 
@@ -2639,7 +3502,8 @@ namespace StayOnTheLine.Forms
                 TextRenderer.DrawText(g, "VERIFYING SUPERVISOR:", fontSigTitle, new Rectangle(sigX, currY, sigW, (int)(14 * scale)), Color.FromArgb(115, 100, 85), TextFormatFlags.Right);
 
                 using var fontSig = FontManager.GetItalicFont(14.5f * scale);
-                TextRenderer.DrawText(g, "Krisha Narciso, Supv.", fontSig, new Rectangle(sigX, currY + (int)(14 * scale), sigW, (int)(22 * scale)), Color.FromArgb(30, 22, 55), TextFormatFlags.Right);
+                string supervisorSignature = $"{System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(Scenario.SupervisorName.ToLowerInvariant())}, Supv.";
+                TextRenderer.DrawText(g, supervisorSignature, fontSig, new Rectangle(sigX, currY + (int)(14 * scale), sigW, (int)(22 * scale)), Color.FromArgb(30, 22, 55), TextFormatFlags.Right);
             };
 
             // Action Button: [ Complete Shift ]
@@ -2751,14 +3615,15 @@ namespace StayOnTheLine.Forms
             {
                 if (callsHandled < 3)
                 {
-                    var res = MessageBox.Show(
+                    bool endEarly = ParchmentNoticeDialog.Confirm(
                         this,
-                        "You still have active/pending emergency trunk lines on the switchboard.\n\nSubmitting an incomplete report will log unhandled lines as infractions. Are you sure you want to end your shift early?",
-                        "Municipal Emergency Services - Early Submission",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning);
+                        "MUNICIPAL EMERGENCY SERVICES // EARLY SUBMISSION",
+                        "End your shift early?",
+                        "You still have pending emergency trunk lines on the switchboard. Submitting an incomplete report will log every unhandled line as an infraction.",
+                        "SUBMIT REPORT",
+                        "KEEP WORKING");
 
-                    if (res != DialogResult.Yes) return;
+                    if (!endEarly) return;
                 }
 
                 Profile.AdvanceShift(newCalls: State.CallsLogged, errors: State.Errors);
@@ -2767,12 +3632,12 @@ namespace StayOnTheLine.Forms
                 SaveManager.Instance.SaveProfile(Profile);
                 AudioManager.Instance.PlayInkStamp();
 
-                MessageBox.Show(
+                ParchmentNoticeDialog.ShowNotice(
                     this,
-                    $"SHIFT 0{Scenario.ShiftNumber} COMPLETED WITH DISTINCTION.\n\nYour promotion to Shift 0{Scenario.ShiftNumber + 1} has been officially registered in the station ledger.",
-                    "Night Desk Personnel Ledger",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                    "NIGHT DESK PERSONNEL LEDGER",
+                    $"Shift {Scenario.ShiftNumber:D2} filed.",
+                    $"Your assignment to Shift {Scenario.ShiftNumber + 1:D2} has been registered in the station ledger.",
+                    "CLOCK OUT");
 
                 this.DialogResult = DialogResult.OK;
                 this.Close();
@@ -2812,6 +3677,137 @@ namespace StayOnTheLine.Forms
                     null, control, new object[] { true });
             }
             catch { }
+        }
+
+        private const TextFormatFlags BookTextFlags = TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+        private static readonly Color BookInkDark = Color.FromArgb(28, 22, 16);
+        private static readonly Color BookInkSub = Color.FromArgb(78, 62, 46);
+
+        /// <summary>Draws (or just measures) wrapped text and returns the Y just below it.</summary>
+        private static int DrawBookText(Graphics g, string text, Font font, Color color, int x, int y, int width, bool draw)
+        {
+            var size = TextRenderer.MeasureText(g, text, font, new Size(width, int.MaxValue), BookTextFlags);
+            if (draw)
+                TextRenderer.DrawText(g, text, font, new Rectangle(x, y, width, size.Height + 2), color, BookTextFlags);
+            return y + size.Height;
+        }
+
+        private static int DrawDirectiveLeftPage(Graphics g, Rectangle page, float s, bool draw)
+        {
+            using var fontTitle = FontManager.GetSmallCapsFont(25f * s, FontStyle.Bold);
+            using var fontSub = FontManager.GetItalicFont(15f * s);
+            using var fontSection = FontManager.GetSmallCapsFont(18f * s, FontStyle.Bold);
+            using var fontBody = FontManager.GetSmallCapsFont(15.5f * s, FontStyle.Regular);
+
+            int x = page.X, w = page.Width, indent = (int)(14 * s);
+            int y = page.Y;
+
+            y = DrawBookText(g, "MUNICIPAL DISPATCH PROTOCOLS", fontTitle, BookInkDark, x, y, w, draw);
+            y = DrawBookText(g, "Civil Defense Communications Branch · Field Reference Directive", fontSub, BookInkSub, x, y, w, draw);
+            y += (int)(22 * s);
+
+            y = DrawBookText(g, "SECTION A: STANDARD RADIO 10-CODES", fontSection, BookInkDark, x, y, w, draw);
+            y += (int)(6 * s);
+            string[] codes = {
+                "10-04  Acknowledgment / Directive Received",
+                "10-07  Unit Out of Service (Mechanical / Transit)",
+                "10-14  Escort / Patrol Reinforcement Required",
+                "10-20  Transmit Exact Grid Coordinates / Location",
+                "10-33  Emergency Traffic Only (Channel Clearance)",
+                "10-99  Officer / Civilian Life-Threat Disturbance"
+            };
+            foreach (var code in codes)
+            {
+                y = DrawBookText(g, code, fontBody, BookInkDark, x + indent, y, w - indent, draw);
+                y += (int)(5 * s);
+            }
+
+            y += (int)(20 * s);
+            y = DrawBookText(g, "SECTION B: PRECINCT SECTORS & DEPLOYMENT", fontSection, BookInkDark, x, y, w, draw);
+            y += (int)(6 * s);
+            string[] sectors = {
+                "SECTOR ALPHA  (West Residential / Bell St)  ·  Units 01, 02",
+                "SECTOR BETA  (Commercial Route 9 Corridor)  ·  Unit 03",
+                "SECTOR GAMMA  (Industrial Basin & River)  ·  Unit 04"
+            };
+            foreach (var sec in sectors)
+            {
+                y = DrawBookText(g, sec, fontBody, BookInkDark, x + indent, y, w - indent, draw);
+                y += (int)(5 * s);
+            }
+
+            y += (int)(20 * s);
+            y = DrawBookText(g, "PRIORITY DEPLOYMENT ORDER", fontSection, BookInkDark, x, y, w, draw);
+            y += (int)(4 * s);
+            y = DrawBookText(g, "Immediate unit deployment is authorized ONLY upon address and incident confirmation. False dispatches deplete limited night vehicles.",
+                fontSub, BookInkSub, x + indent, y, w - indent, draw);
+            return y;
+        }
+
+        private int DrawDirectiveRightPage(Graphics g, Rectangle page, float s, bool draw)
+        {
+            using var fontTitle = FontManager.GetSmallCapsFont(25f * s, FontStyle.Bold);
+            using var fontSub = FontManager.GetItalicFont(15f * s);
+            using var fontRule = FontManager.GetSmallCapsFont(16.5f * s, FontStyle.Bold);
+            using var fontRuleBody = FontManager.GetItalicFont(14.5f * s);
+
+            int x = page.X, w = page.Width, indent = (int)(14 * s);
+            int y = page.Y;
+
+            y = DrawBookText(g, "NIGHT DESK ORDERS & MANDATES", fontTitle, BookInkDark, x, y, w, draw);
+            y = DrawBookText(g, $"Station Supervisor: {Scenario.SupervisorName} · Terminal 04 Directive", fontSub, BookInkSub, x, y, w, draw);
+            y += (int)(22 * s);
+
+            string[] rules = {
+                "RULE 01: IDENTITY & RESIDENCE VERIFICATION",
+                "Always confirm caller name and street address prior to unit deployment. Unverified dispatches count as protocol infractions.",
+                "RULE 02: ARCHIVE CROSS-EXAMINATION",
+                "Consult station log archives on all incoming lines. Check prior incident records and notes for recurring disturbances.",
+                "RULE 03: TRUNK LINE 08 BAN (CRITICAL WARNING)",
+                "Under NO circumstances may an operator answer, hold, or trace Trunk Line 08. That channel is sealed. Report any activity directly to your supervisor.",
+                "RULE 04: DISTRESS DE-ESCALATION",
+                "When telemetry indicates severe caller panic (>75%), maintain verbal reassurance protocol before issuing movement orders.",
+                "RULE 05: SHIFT QUARANTINE PROTOCOL",
+                "Do not discuss unconfirmed night anomalies or purged records with oncoming day shift operators. What occurs on night desk stays on night desk."
+            };
+
+            for (int i = 0; i < rules.Length; i += 2)
+            {
+                y = DrawBookText(g, rules[i], fontRule, BookInkDark, x, y, w, draw);
+                y += (int)(2 * s);
+                y = DrawBookText(g, rules[i + 1], fontRuleBody, BookInkSub, x + indent, y, w - indent, draw);
+                y += (int)(16 * s);
+            }
+
+            // Official verification stamp, sized to its text
+            y += (int)(8 * s);
+            using var fontStamp = FontManager.GetSmallCapsFont(14f * s, FontStyle.Bold);
+            string stampText = $"OFFICIAL DIRECTIVE — CIVIL DEFENSE // {Scenario.SupervisorName}";
+            var stampSize = TextRenderer.MeasureText(g, stampText, fontStamp, Size.Empty, TextFormatFlags.NoPrefix);
+            int stampW = Math.Min(w, stampSize.Width + (int)(28 * s));
+            int stampH = stampSize.Height + (int)(14 * s);
+            if (draw)
+            {
+                var stampRect = new Rectangle(x + (w - stampW) / 2, y, stampW, stampH);
+                var state = g.Save();
+                g.TranslateTransform(stampRect.X + stampW / 2f, stampRect.Y + stampH / 2f);
+                g.RotateTransform(-2f);
+                var local = new Rectangle(-stampW / 2, -stampH / 2, stampW, stampH);
+                using var stampPen = new Pen(Color.FromArgb(160, 40, 40), Math.Max(1.5f, 2f * s));
+                g.DrawRectangle(stampPen, local);
+                // GDI+ DrawString honours the rotation (TextRenderer ignores world transforms)
+                using var stampBrush = new SolidBrush(Color.FromArgb(160, 40, 40));
+                using var stampFormat = new StringFormat
+                {
+                    Alignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center,
+                    Trimming = StringTrimming.EllipsisCharacter,
+                    FormatFlags = StringFormatFlags.NoWrap
+                };
+                g.DrawString(stampText, fontStamp, stampBrush, local, stampFormat);
+                g.Restore(state);
+            }
+            return y + stampH;
         }
 
         private void ShowDirectiveManualModal()
@@ -2861,105 +3857,21 @@ namespace StayOnTheLine.Forms
 
                     float scale = (float)bookRect.Width / 1920f;
 
-                    // Left Page Coordinates inside the open binder (X=340..910, Y=110..930)
-                    int leftPageX = bookRect.X + (int)(340 * scale);
-                    int leftPageW = (int)(570 * scale);
-                    int pageTopY = bookRect.Y + (int)(110 * scale);
+                    // Pages inside the open binder, in 1920x1080 book-image units (inside the paper margins)
+                    var leftPage = new Rectangle(bookRect.X + (int)(380 * scale), bookRect.Y + (int)(150 * scale), (int)(580 * scale), (int)(770 * scale));
+                    var rightPage = new Rectangle(bookRect.X + (int)(1045 * scale), bookRect.Y + (int)(150 * scale), (int)(560 * scale), (int)(770 * scale));
 
-                    // Right Page Coordinates inside the open binder (X=1030..1600, Y=110..930)
-                    int rightPageX = bookRect.X + (int)(1030 * scale);
-                    int rightPageW = (int)(570 * scale);
-
-                    // --- LEFT PAGE: 10-CODES & RADIO DIRECTIVE ---
-                    using var fontBookTitle = FontManager.GetSmallCapsFont(18f * scale, FontStyle.Bold);
-                    using var fontBookSub = FontManager.GetItalicFont(10.5f * scale);
-                    using var fontSection = FontManager.GetSmallCapsFont(12.5f * scale, FontStyle.Bold);
-                    using var fontBody = FontManager.GetSmallCapsFont(10.5f * scale, FontStyle.Regular);
-                    using var fontBold = FontManager.GetSmallCapsFont(11f * scale, FontStyle.Bold);
-
-                    var inkDark = Color.FromArgb(28, 22, 16);
-                    var inkSub = Color.FromArgb(85, 70, 55);
-
-                    int curY = pageTopY + (int)(10 * scale);
-                    TextRenderer.DrawText(g, "MUNICIPAL DISPATCH PROTOCOLS", fontBookTitle, new Rectangle(leftPageX, curY, leftPageW, (int)(28 * scale)), inkDark, TextFormatFlags.Left);
-                    curY += (int)(26 * scale);
-
-                    TextRenderer.DrawText(g, "Civil Defense Communications Branch · Field Reference Directive", fontBookSub, new Rectangle(leftPageX, curY, leftPageW, (int)(20 * scale)), inkSub, TextFormatFlags.Left);
-                    curY += (int)(26 * scale);
-
-                    TextRenderer.DrawText(g, "SECTION A: STANDARD RADIO 10-CODES", fontSection, new Rectangle(leftPageX, curY, leftPageW, (int)(22 * scale)), inkDark, TextFormatFlags.Left);
-                    curY += (int)(22 * scale);
-
-                    string[] codes = {
-                        "10-04  Acknowledgment / Directive Received",
-                        "10-07  Unit Out of Service (Mechanical / Transit)",
-                        "10-14  Escort / Patrol Reinforcement Required",
-                        "10-20  Transmit Exact Grid Coordinates / Location",
-                        "10-33  Emergency Traffic Only (Channel Clearance)",
-                        "10-99  Officer / Civilian Life-Threat Disturbance"
-                    };
-
-                    foreach (var code in codes)
+                    // Lay the pages out at a comfortable reading size, shrinking only if a page would overflow
+                    float textScale = 1f;
+                    while (textScale > 0.6f &&
+                           (DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: false) > leftPage.Bottom ||
+                            DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: false) > rightPage.Bottom))
                     {
-                        TextRenderer.DrawText(g, code, fontBody, new Rectangle(leftPageX + (int)(10 * scale), curY, leftPageW - (int)(10 * scale), (int)(19 * scale)), inkDark, TextFormatFlags.Left);
-                        curY += (int)(20 * scale);
+                        textScale -= 0.05f;
                     }
 
-                    curY += (int)(14 * scale);
-                    TextRenderer.DrawText(g, "SECTION B: PRECINCT SECTORS & DEPLOYMENT", fontSection, new Rectangle(leftPageX, curY, leftPageW, (int)(22 * scale)), inkDark, TextFormatFlags.Left);
-                    curY += (int)(22 * scale);
-
-                    string[] sectors = {
-                        "SECTOR ALPHA  (West Residential / Bell St)  ·  Units 01, 02",
-                        "SECTOR BETA   (Commercial Route 9 Corridor) ·  Unit 03",
-                        "SECTOR GAMMA  (Industrial Basin & River)    ·  Unit 04"
-                    };
-
-                    foreach (var sec in sectors)
-                    {
-                        TextRenderer.DrawText(g, sec, fontBody, new Rectangle(leftPageX + (int)(10 * scale), curY, leftPageW - (int)(10 * scale), (int)(19 * scale)), inkDark, TextFormatFlags.Left);
-                        curY += (int)(20 * scale);
-                    }
-
-                    curY += (int)(12 * scale);
-                    TextRenderer.DrawText(g, "PRIORITY DEPLOYMENT ORDER:\nImmediate unit deployment authorized ONLY upon address and incident confirmation. False dispatches deplete limited night vehicles.", fontBookSub, new Rectangle(leftPageX + (int)(10 * scale), curY, leftPageW - (int)(20 * scale), (int)(48 * scale)), inkSub, TextFormatFlags.Left | TextFormatFlags.WordBreak);
-
-                    // --- RIGHT PAGE: STATION ORDERS & OPERATOR RULES ---
-                    int rY = pageTopY + (int)(10 * scale);
-                    TextRenderer.DrawText(g, "NIGHT DESK ORDERS & MANDATES", fontBookTitle, new Rectangle(rightPageX, rY, rightPageW, (int)(28 * scale)), inkDark, TextFormatFlags.Left);
-                    rY += (int)(26 * scale);
-
-                    TextRenderer.DrawText(g, $"Station Supervisor: {Scenario.SupervisorName} · Terminal 04 Directive", fontBookSub, new Rectangle(rightPageX, rY, rightPageW, (int)(20 * scale)), inkSub, TextFormatFlags.Left);
-                    rY += (int)(26 * scale);
-
-                    string[] rules = {
-                        "RULE 01: IDENTITY & RESIDENCE VERIFICATION",
-                        "Always confirm caller name and street address prior to unit deployment. Unverified dispatches count as protocol infractions.",
-                        "RULE 02: ARCHIVE CROSS-EXAMINATION",
-                        "Consult station log archives on all incoming lines. Check prior incident records and notes for recurring disturbances.",
-                        "RULE 03: TRUNK LINE 08 BAN (CRITICAL WARNING)",
-                        "Under NO circumstances may an operator answer, hold, or trace Trunk Line 08. That channel is sealed. Report any activity directly to supervisor.",
-                        "RULE 04: DISTRESS DE-ESCALATION",
-                        "When telemetry indicates severe caller panic (>75%), maintain verbal reassurance protocol before issuing movement orders.",
-                        "RULE 05: SHIFT QUARANTINE PROTOCOL",
-                        "Do not discuss unconfirmed night anomalies or purged records with oncoming day shift operators. What occurs on night desk stays on night desk."
-                    };
-
-                    for (int i = 0; i < rules.Length; i += 2)
-                    {
-                        TextRenderer.DrawText(g, rules[i], fontBold, new Rectangle(rightPageX + (int)(10 * scale), rY, rightPageW - (int)(10 * scale), (int)(19 * scale)), inkDark, TextFormatFlags.Left);
-                        rY += (int)(18 * scale);
-                        TextRenderer.DrawText(g, rules[i + 1], fontBookSub, new Rectangle(rightPageX + (int)(18 * scale), rY, rightPageW - (int)(28 * scale), (int)(38 * scale)), inkSub, TextFormatFlags.Left | TextFormatFlags.WordBreak);
-                        rY += (int)(40 * scale);
-                    }
-
-                    rY += (int)(10 * scale);
-                    // Official verification stamp
-                    var stampRect = new Rectangle(rightPageX + (int)(80 * scale), rY, (int)(380 * scale), (int)(40 * scale));
-                    using var stampPen = new Pen(Color.FromArgb(160, 40, 40), 2f * scale);
-                    g.DrawRectangle(stampPen, stampRect);
-                    using var fontStamp = FontManager.GetSmallCapsFont(12f * scale, FontStyle.Bold);
-                    TextRenderer.DrawText(g, $"OFFICIAL DIRECTIVE — CIVIL DEFENSE // {Scenario.SupervisorName}", fontStamp, stampRect, Color.FromArgb(160, 40, 40), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: true);
+                    DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: true);
                 }
             };
 
@@ -2996,10 +3908,11 @@ namespace StayOnTheLine.Forms
             {
                 if (_pnlManualModal.Width <= 0 || _pnlManualModal.Height <= 0) return;
                 float scale = _pnlManualModal.Height / 1080f;
-                int bW = Math.Clamp((int)(300 * scale), 240, 360);
-                int bH = Math.Clamp((int)(46 * scale), 36, 52);
+                btnCloseManual.Font = FontManager.GetSmallCapsFont(Math.Max(9f, 11.5f * scale), FontStyle.Bold);
+                var textSize = TextRenderer.MeasureText(btnCloseManual.Text, btnCloseManual.Font);
+                int bW = Math.Max((int)(300 * scale), textSize.Width + (int)(40 * scale));
+                int bH = Math.Max((int)(46 * scale), textSize.Height + (int)(18 * scale));
                 btnCloseManual.Size = new Size(bW, bH);
-                btnCloseManual.Font = FontManager.GetSmallCapsFont(11.5f * scale, FontStyle.Bold);
                 btnCloseManual.Location = new Point((_pnlManualModal.Width - bW) / 2, _pnlManualModal.Height - bH - (int)(18 * scale));
             }
 
@@ -3013,6 +3926,12 @@ namespace StayOnTheLine.Forms
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            if ((e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) && _charmDialogue.IsActive)
+            {
+                _charmDialogue.Advance();
+                e.Handled = true;
+                return;
+            }
             if (e.KeyCode == Keys.Escape)
             {
                 if (_pnlManualModal != null && _pnlManualModal.Visible)
@@ -3031,6 +3950,7 @@ namespace StayOnTheLine.Forms
             base.OnShiftStarted();
             // Start in Desk Room View so the player sees their station, then clicks into computer
             SwitchView(ViewState.DeskRoom);
+            UpdatePhoneRing(); // the first line is already ringing while you sit at the desk
         }
     }
 

@@ -145,9 +145,9 @@ namespace StayOnTheLine.Controls
                 int padX = cardX + (int)(28 * s);
                 int lineGap = (int)(32 * s);
 
-                DrawInfoLine(g, "OPERATOR VERIFIED", _profile.OperatorName.ToUpperInvariant(), padX, bodyY, titleFont, textDim, textWhite, s);
-                DrawInfoLine(g, "CLEARANCE LEVEL", "LEVEL 1 (PROVISIONAL DISPATCHER)", padX, bodyY + lineGap, titleFont, textDim, greenGlow, s);
-                DrawInfoLine(g, "ASSIGNED SHIFT", $"SHIFT {_profile.CurrentShift} — TRAINING PROTOCOL", padX, bodyY + lineGap * 2, titleFont, textDim, textWhite, s);
+                DrawInfoLine(g, "OPERATOR", _profile.OperatorName.ToUpperInvariant(), padX, bodyY, titleFont, textDim, textWhite, s);
+                string assignedShiftTitle = Systems.ShiftScenarioFactory.Create(_profile.CurrentShift).ShiftTitle;
+                DrawInfoLine(g, "ASSIGNED SHIFT", assignedShiftTitle, padX, bodyY + lineGap * 2, titleFont, textDim, textWhite, s);
                 DrawInfoLine(g, "CALLS LOGGED", _profile.CallsLogged.ToString(), padX, bodyY + lineGap * 3, titleFont, textDim, textWhite, s);
 
                 // Divider line
@@ -156,7 +156,7 @@ namespace StayOnTheLine.Controls
                     g.DrawLine(divPen, padX, divY, cardX + cardW - (int)(28 * s), divY);
 
                 // Bottom Callout
-                string commMsg = "[ COMMENCING NIGHT DISPATCH SHIFT... ]";
+                string commMsg = $"[ GOOD EVENING, {_profile.OperatorName.ToUpperInvariant()}. COMMENCING NIGHT DISPATCH SHIFT... ]";
                 using (Font commFont = FontManager.GetSmallCapsFont(Math.Max(10f, 13f * s), FontStyle.Bold))
                 {
                     g.DrawString(commMsg, commFont, greenGlow, padX, divY + (int)(12 * s));

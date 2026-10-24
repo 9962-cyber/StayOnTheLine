@@ -11,13 +11,15 @@ namespace StayOnTheLine.Systems
     /// </summary>
     public static class ShiftScenarioFactory
     {
+        /// <summary>True when a playable scenario exists for this shift (used to chain shifts).</summary>
+        public static bool HasScenario(int shiftNumber) => shiftNumber is 1 or 2;
+
         public static IShiftScenario Create(int shiftNumber)
         {
             return shiftNumber switch
             {
                 1 => new Shift1TutorialScenario(),
-                // Shift 2 and subsequent shifts to be implemented by co-programmer:
-                // 2 => new Shift2Scenario(),
+                2 => new Shift2Scenario(), // <--- Wired up!
                 _ => new Shift1TutorialScenario()
             };
         }

@@ -95,11 +95,11 @@ namespace StayOnTheLine.Forms
             lblClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblClose.BackColor = Color.Transparent;
             lblClose.Cursor = Cursors.Hand;
-            lblClose.Font = new Font("Georgia", 15F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblClose.Font = new Font("Segoe UI Symbol", 18F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblClose.ForeColor = Color.FromArgb(40, 25, 12);
-            lblClose.Location = new Point(1045, 78);
+            lblClose.Location = new Point(1036, 70);
             lblClose.Name = "lblClose";
-            lblClose.Size = new Size(36, 36);
+            lblClose.Size = new Size(48, 48);
             lblClose.TabIndex = 3;
             lblClose.Text = "✕";
             lblClose.TextAlign = ContentAlignment.MiddleCenter;
@@ -388,7 +388,7 @@ namespace StayOnTheLine.Forms
             // OperatorArchiveForm
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleMode = AutoScaleMode.None;
             BackColor = Color.FromArgb(10, 10, 10);
             ClientSize = new Size(1920, 1080);
             Controls.Add(pnlParchmentLedger);

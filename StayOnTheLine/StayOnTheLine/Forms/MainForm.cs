@@ -137,7 +137,7 @@ namespace StayOnTheLine
         }
 
         // Opens the tutorial form with the verified operator's profile and smooth transition
-        private void OpenTutorialFlow(Models.OperatorProfile? profile = null, Controls.OperatorVerificationOverlay? overlay = null)
+        private void OpenTutorialFlow(Models.OperatorProfile? profile = null, Controls.OperatorVerificationOverlay? overlay = null, Action? onShown = null)
         {
             var tutorial = profile != null ? new Tutorial(profile) : new Tutorial("OPERATOR");
 
@@ -145,6 +145,7 @@ namespace StayOnTheLine
             tutorial.Shown += (s, e) =>
             {
                 this.Hide();
+                onShown?.Invoke();
                 if (overlay != null)
                 {
                     if (pbBackground.Controls.Contains(overlay))
@@ -163,10 +164,18 @@ namespace StayOnTheLine
             {
                 if (tutorial.DialogResult == DialogResult.OK && profile != null)
                 {
-                    profile.TutorialCompleted = true;
+                    if (profile.CurrentShift == 1)
+                    {
+                        profile.TutorialCompleted = true;
+                    }
+                    else if (profile.CurrentShift == 2)
+                    {
+                        if (!profile.AnomalyFlags.Contains("Shift2IntroSeen"))
+                            profile.AnomalyFlags.Add("Shift2IntroSeen");
+                    }
                     SaveManager.Instance.SaveProfile(profile);
 
-                    // Seamless transition straight from tutorial dialogue into Shift 1
+                    // Seamless transition straight from tutorial dialogue into Shift 1 / Shift 2
                     OpenShiftFlow(profile);
                 }
                 else
@@ -185,14 +194,16 @@ namespace StayOnTheLine
             tutorial.Update();
         }
 
-        private void OpenShiftFlow(Models.OperatorProfile profile, Controls.OperatorVerificationOverlay? overlay = null)
+        private void OpenShiftFlow(Models.OperatorProfile profile, Controls.OperatorVerificationOverlay? overlay = null, Action? onShown = null)
         {
             var scenario = Systems.ShiftScenarioFactory.Create(profile.CurrentShift);
             var shiftForm = new Forms.ShiftPlayForm(profile, scenario);
+            bool continuingToNextShift = false;
 
             shiftForm.Shown += (s, e) =>
             {
                 this.Hide();
+                onShown?.Invoke();
                 if (overlay != null)
                 {
                     if (pbBackground.Controls.Contains(overlay))
@@ -207,12 +218,25 @@ namespace StayOnTheLine
                 }
             };
 
+            // Clocked out with a next shift to play: put its loading screen up *before* this window
+            // closes, so the game never drops to the desktop or back to the menu in between
+            shiftForm.FormClosing += (s, e) =>
+            {
+                if (shiftForm.DialogResult == DialogResult.OK && Systems.ShiftScenarioFactory.HasScenario(profile.CurrentShift))
+                {
+                    continuingToNextShift = true;
+                    ShowShiftTransition(profile);
+                }
+            };
+
             shiftForm.FormClosed += (s, e) =>
             {
+                shiftForm.Dispose();
+                if (continuingToNextShift) return;
+
                 this.Show();
                 this.BringToFront();
                 this.Activate();
-                shiftForm.Dispose();
             };
 
             shiftForm.Show();
@@ -220,6 +244,29 @@ namespace StayOnTheLine
             shiftForm.Activate();
             shiftForm.Focus();
             shiftForm.Update();
+        }
+
+        /// <summary>
+        /// Loading screen titled with the next shift (e.g. "SHIFT 2"), then that
+        /// shift's intro scene if it hasn't been seen, otherwise the shift itself.
+        /// </summary>
+        private void ShowShiftTransition(Models.OperatorProfile profile)
+        {
+            var loading = new LoadingForm(
+                $"SHIFT {profile.CurrentShift}",
+                string.Empty,
+                screen =>
+                {
+                    bool needsIntro = profile.CurrentShift == 2 && !profile.AnomalyFlags.Contains("Shift2IntroSeen");
+                    if (needsIntro)
+                        OpenTutorialFlow(profile, onShown: screen.Close);
+                    else
+                        OpenShiftFlow(profile, onShown: screen.Close);
+                });
+
+            loading.Show();
+            loading.BringToFront();
+            loading.Activate();
         }
 
         private void StartNewShiftFlow()
@@ -262,13 +309,16 @@ namespace StayOnTheLine
             {
                 // Smooth transition: keep overlay (which is solid black) visible
                 // until Tutorial or Shift is shown and painted, completely preventing any desktop or menu flicker!
-                if (profile.TutorialCompleted)
+                bool needsIntro = (profile.CurrentShift == 1 && !profile.TutorialCompleted) ||
+                                  (profile.CurrentShift == 2 && !profile.AnomalyFlags.Contains("Shift2IntroSeen"));
+
+                if (needsIntro)
                 {
-                    OpenShiftFlow(profile, overlay);
+                    OpenTutorialFlow(profile, overlay);
                 }
                 else
                 {
-                    OpenTutorialFlow(profile, overlay);
+                    OpenShiftFlow(profile, overlay);
                 }
             };
 

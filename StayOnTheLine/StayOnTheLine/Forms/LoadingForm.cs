@@ -16,7 +16,11 @@ namespace StayOnTheLine
     {
         // Encapsulation: domain logic managed by specialized system classes
         private readonly LoadingManager _loadingManager = new();
+        private DesignScaler? _scaler;
         private bool _isTransitioning = false;
+
+        // Set when this screen bridges two shifts instead of booting the game
+        private readonly Action<LoadingForm>? _onProceed;
 
         protected override CreateParams CreateParams
         {
@@ -35,6 +39,20 @@ namespace StayOnTheLine
             SubscribeToLoadingEvents();
             lblPrompt.Click += (s, e) => HandleUserAction();
             lblPrompt.Cursor = Cursors.Hand;
+        }
+
+        /// <summary>
+        /// Between-shifts loading screen: same look, titled with the next shift
+        /// (e.g. "Shift 02" / "Escalation"). When the player proceeds, <paramref name="onProceed"/>
+        /// opens the next screen; the caller closes this form once that screen is showing.
+        /// </summary>
+        public LoadingForm(string title, string subtitle, Action<LoadingForm> onProceed) : this()
+        {
+            lblTitleStayOn.Text = title;
+            lblTitleTheLine.Text = subtitle;
+            lblTitleTheLine.Visible = subtitle.Length > 0;
+            lblSubtitle.Text = "N I G H T   D E S K   —   C L O C K I N G   I N";
+            _onProceed = onProceed;
         }
 
         /// <summary>
@@ -63,6 +81,7 @@ namespace StayOnTheLine
         private void LoadingForm_Load(object? sender, EventArgs e)
         {
             ApplyCustomFonts();
+            _scaler = new DesignScaler(this);
             CenterControls();
             loadingTimer.Start();
             AudioManager.Instance.PlayAmbientLoop();
@@ -82,35 +101,38 @@ namespace StayOnTheLine
             if (ClientSize.Width <= 0 || ClientSize.Height <= 0)
                 return;
 
+            _scaler?.Apply(DesignScaler.FactorFor(ClientSize));
+            float s = _scaler?.Factor ?? 1f;
+
             int centerX = ClientSize.Width / 2;
             int centerY = ClientSize.Height / 2;
 
             // Center Title Group
-            int titleBaseY = Math.Max(40, centerY - 250);
+            int titleBaseY = Math.Max((int)(40 * s), centerY - (int)(250 * s));
 
             lblSubtitle.Left = centerX - (lblSubtitle.Width / 2);
             lblSubtitle.Top = titleBaseY;
 
             lblTitleStayOn.Left = centerX - (lblTitleStayOn.Width / 2);
-            lblTitleStayOn.Top = titleBaseY + 38;
+            lblTitleStayOn.Top = titleBaseY + (int)(38 * s);
 
             lblTitleTheLine.Left = centerX - (lblTitleTheLine.Width / 2);
-            lblTitleTheLine.Top = titleBaseY + 148;
+            lblTitleTheLine.Top = titleBaseY + (int)(148 * s);
 
             // Center Loading Section (approx 83% down the screen)
-            int loadingBaseY = Math.Max(titleBaseY + 290, (int)(ClientSize.Height * 0.82));
+            int loadingBaseY = Math.Max(titleBaseY + (int)(290 * s), (int)(ClientSize.Height * 0.82));
 
             lblStatus.Left = centerX - (lblStatus.Width / 2);
             lblStatus.Top = loadingBaseY;
 
             pnlProgressBarBorder.Left = centerX - (pnlProgressBarBorder.Width / 2);
-            pnlProgressBarBorder.Top = loadingBaseY + 38;
+            pnlProgressBarBorder.Top = loadingBaseY + (int)(38 * s);
 
             lblPercentage.Left = centerX - (lblPercentage.Width / 2);
-            lblPercentage.Top = loadingBaseY + 58;
+            lblPercentage.Top = loadingBaseY + (int)(58 * s);
 
             lblPrompt.Left = centerX - (lblPrompt.Width / 2);
-            lblPrompt.Top = loadingBaseY + 88;
+            lblPrompt.Top = loadingBaseY + (int)(88 * s);
         }
 
         private void LoadingTimer_Tick(object? sender, EventArgs e)
@@ -157,7 +179,7 @@ namespace StayOnTheLine
 
         private void LoadingForm_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Escape)
+            if (e.KeyCode == Keys.Escape && _onProceed == null)
             {
                 Application.Exit();
                 return;
@@ -192,6 +214,12 @@ namespace StayOnTheLine
             loadingTimer.Stop();
             blinkTimer.Stop();
             lblPrompt.Visible = false;
+
+            if (_onProceed != null)
+            {
+                _onProceed(this);
+                return;
+            }
 
             // Pre-instantiate and display MainForm first so the display never reveals the desktop
             var mainForm = new MainForm();

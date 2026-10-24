@@ -118,8 +118,14 @@ namespace StayOnTheLine.Forms
             catch { }
         }
 
+        // Fits the 1920x1080 ledger design to the player's monitor
+        private DesignScaler? _scaler;
+        private float LayoutFactor => _scaler?.Factor ?? 1f;
+
         private void SettingsForm_Load(object sender, EventArgs e)
         {
+            // Created on load so the optional Exit button (added before ShowDialog) is included
+            _scaler = new DesignScaler(this);
             CenterLedger();
             AudioManager.Instance.PlayPaperRustle();
         }
@@ -138,6 +144,15 @@ namespace StayOnTheLine.Forms
         {
             if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
 
+            if (_scaler != null)
+            {
+                float before = _scaler.Factor;
+                _scaler.Apply(DesignScaler.FactorFor(ClientSize));
+                if (Math.Abs(before - _scaler.Factor) > 0.001f)
+                    SetExpandedSection(_expandedSection, playSound: false);
+            }
+
+            BakeParchment();
             pnlParchmentContainer.Left = (ClientSize.Width - pnlParchmentContainer.Width) / 2;
             pnlParchmentContainer.Top = (ClientSize.Height - pnlParchmentContainer.Height) / 2;
         }
@@ -178,6 +193,31 @@ namespace StayOnTheLine.Forms
             }
         }
 
+        private Image? _parchmentSource;
+
+        /// <summary>
+        /// Pre-stretches the parchment to the panel's exact size. With a live Stretch layout,
+        /// transparent labels repaint a mis-scaled slice of the texture and show as patchy boxes.
+        /// </summary>
+        private void BakeParchment()
+        {
+            if (_parchmentSource == null || pnlParchmentContainer.Width <= 0 || pnlParchmentContainer.Height <= 0) return;
+            if (pnlParchmentContainer.BackgroundImage is Bitmap current && current.Size == pnlParchmentContainer.Size) return;
+
+            var baked = new Bitmap(pnlParchmentContainer.Width, pnlParchmentContainer.Height);
+            using (var g = Graphics.FromImage(baked))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.DrawImage(_parchmentSource, new Rectangle(Point.Empty, baked.Size));
+            }
+
+            var old = pnlParchmentContainer.BackgroundImage;
+            pnlParchmentContainer.BackgroundImageLayout = ImageLayout.None;
+            pnlParchmentContainer.BackgroundImage = baked;
+            if (old != null && !ReferenceEquals(old, _parchmentSource)) old.Dispose();
+        }
+
         private void LoadBackgroundImages()
         {
             try
@@ -189,8 +229,8 @@ namespace StayOnTheLine.Forms
 
                 if (File.Exists(croppedParchment))
                 {
-                    pnlParchmentContainer.BackgroundImage = Image.FromFile(croppedParchment);
-                    pnlParchmentContainer.BackgroundImageLayout = ImageLayout.Stretch;
+                    _parchmentSource = Image.FromFile(croppedParchment);
+                    BakeParchment();
                 }
                 else
                 {
@@ -200,8 +240,8 @@ namespace StayOnTheLine.Forms
 
                     if (File.Exists(ledgerBg))
                     {
-                        pnlParchmentContainer.BackgroundImage = Image.FromFile(ledgerBg);
-                        pnlParchmentContainer.BackgroundImageLayout = ImageLayout.Stretch;
+                        _parchmentSource = Image.FromFile(ledgerBg);
+                        BakeParchment();
                     }
                 }
 
@@ -225,50 +265,50 @@ namespace StayOnTheLine.Forms
         private void ApplyCustomFonts()
         {
             lblHeaderTitle.Font = FontManager.GetSmallCapsFont(30F, FontStyle.Bold);
-            lblHeaderSubtitle.Font = FontManager.GetItalicFont(12.5F);
-            lblSectionKicker.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
+            lblHeaderSubtitle.Font = FontManager.GetItalicFont(14F);
+            lblSectionKicker.Font = FontManager.GetSmallCapsFont(12F, FontStyle.Bold);
             lblSectionTitle.Font = FontManager.GetSmallCapsFont(20F, FontStyle.Bold);
-            lblTagline.Font = FontManager.GetItalicFont(11.5F);
+            lblTagline.Font = FontManager.GetItalicFont(13F);
 
             // Row 01
             lblRow1Num.Font = FontManager.GetSmallCapsFont(20F, FontStyle.Bold);
-            lblRow1Title.Font = FontManager.GetSmallCapsFont(16F, FontStyle.Bold);
-            lblRow1Summary.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
-            lblRow1Toggle.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
-            lblAudioDesc.Font = FontManager.GetItalicFont(10F);
-            chkMuteAll.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
-            lblAudioHint.Font = FontManager.GetItalicFont(8.5F);
+            lblRow1Title.Font = FontManager.GetSmallCapsFont(18F, FontStyle.Bold);
+            lblRow1Summary.Font = FontManager.GetItalicFont(13F);
+            lblRow1Toggle.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
+            lblAudioDesc.Font = FontManager.GetItalicFont(11.5F);
+            chkMuteAll.Font = FontManager.GetSmallCapsFont(12F, FontStyle.Bold);
+            lblAudioHint.Font = FontManager.GetItalicFont(11.5F);
 
-            lblMaster.Font = FontManager.GetSmallCapsFont(10F, FontStyle.Bold);
-            lblMasterVal.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
-            lblAmbient.Font = FontManager.GetSmallCapsFont(10F, FontStyle.Bold);
-            lblAmbientVal.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
-            lblSfx.Font = FontManager.GetSmallCapsFont(10F, FontStyle.Bold);
-            lblSfxVal.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
+            lblMaster.Font = FontManager.GetSmallCapsFont(11F, FontStyle.Bold);
+            lblMasterVal.Font = FontManager.GetSmallCapsFont(12.5F, FontStyle.Bold);
+            lblAmbient.Font = FontManager.GetSmallCapsFont(11F, FontStyle.Bold);
+            lblAmbientVal.Font = FontManager.GetSmallCapsFont(12.5F, FontStyle.Bold);
+            lblSfx.Font = FontManager.GetSmallCapsFont(11F, FontStyle.Bold);
+            lblSfxVal.Font = FontManager.GetSmallCapsFont(12.5F, FontStyle.Bold);
 
             // Row 02
             lblRow2Num.Font = FontManager.GetSmallCapsFont(20F, FontStyle.Bold);
-            lblRow2Title.Font = FontManager.GetSmallCapsFont(16F, FontStyle.Bold);
-            lblRow2Summary.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
-            lblRow2Toggle.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
-            lblTeletypeDesc.Font = FontManager.GetItalicFont(11F);
-            lblRow2Status.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
+            lblRow2Title.Font = FontManager.GetSmallCapsFont(18F, FontStyle.Bold);
+            lblRow2Summary.Font = FontManager.GetItalicFont(13F);
+            lblRow2Toggle.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
+            lblTeletypeDesc.Font = FontManager.GetItalicFont(13F);
+            lblRow2Status.Font = FontManager.GetSmallCapsFont(12.5F, FontStyle.Bold);
             btnSpeedSlow.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
             btnSpeedStandard.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
             btnSpeedInstant.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
 
             // Row 03
             lblRow3Num.Font = FontManager.GetSmallCapsFont(20F, FontStyle.Bold);
-            lblRow3Title.Font = FontManager.GetSmallCapsFont(16F, FontStyle.Bold);
-            lblRow3Summary.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
-            lblRow3Toggle.Font = FontManager.GetSmallCapsFont(9.5F, FontStyle.Bold);
-            lblPurgeHeader.Font = FontManager.GetSmallCapsFont(12F, FontStyle.Bold);
-            lblPurgeDetails.Font = FontManager.GetItalicFont(10F);
-            lblPersistentInfo.Font = FontManager.GetItalicFont(9F);
+            lblRow3Title.Font = FontManager.GetSmallCapsFont(18F, FontStyle.Bold);
+            lblRow3Summary.Font = FontManager.GetItalicFont(13F);
+            lblRow3Toggle.Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold);
+            lblPurgeHeader.Font = FontManager.GetSmallCapsFont(14F, FontStyle.Bold);
+            lblPurgeDetails.Font = FontManager.GetItalicFont(12.5F);
+            lblPersistentInfo.Font = FontManager.GetItalicFont(11.5F);
             btnPurgeAll.Font = FontManager.GetSmallCapsFont(12F, FontStyle.Bold);
 
             // Footer
-            lblFooterHelp.Font = FontManager.GetItalicFont(9.5F);
+            lblFooterHelp.Font = FontManager.GetItalicFont(11.5F);
             btnCancel.Font = FontManager.GetSmallCapsFont(11.5F, FontStyle.Bold);
             btnApply.Font = FontManager.GetSmallCapsFont(12F, FontStyle.Bold);
         }
@@ -316,9 +356,10 @@ namespace StayOnTheLine.Forms
             bool changed = (_expandedSection != index);
             _expandedSection = index;
 
-            int expandedHeight = 326;
-            int collapsedHeight = 52;
-            int gap = 8;
+            float f = LayoutFactor;
+            int expandedHeight = (int)Math.Round(326 * f);
+            int collapsedHeight = (int)Math.Round(52 * f);
+            int gap = (int)Math.Round(8 * f);
             int currentTop = 0;
 
             for (int i = 0; i < 3; i++)
@@ -365,14 +406,17 @@ namespace StayOnTheLine.Forms
         private void UpdateSummaryTexts()
         {
             // Auto-position summary labels right after their titles to prevent any overlap
-            lblRow1Summary.Left = lblRow1Title.Right + 18;
-            lblRow1Summary.Width = Math.Max(200, lblRow1Toggle.Left - lblRow1Summary.Left - 10);
+            float f = LayoutFactor;
+            int lead = (int)(18 * f), trail = (int)(10 * f), minW = (int)(200 * f);
 
-            lblRow2Summary.Left = lblRow2Title.Right + 18;
-            lblRow2Summary.Width = Math.Max(200, lblRow2Toggle.Left - lblRow2Summary.Left - 10);
+            lblRow1Summary.Left = lblRow1Title.Right + lead;
+            lblRow1Summary.Width = Math.Max(minW, lblRow1Toggle.Left - lblRow1Summary.Left - trail);
 
-            lblRow3Summary.Left = lblRow3Title.Right + 18;
-            lblRow3Summary.Width = Math.Max(200, lblRow3Toggle.Left - lblRow3Summary.Left - 10);
+            lblRow2Summary.Left = lblRow2Title.Right + lead;
+            lblRow2Summary.Width = Math.Max(minW, lblRow2Toggle.Left - lblRow2Summary.Left - trail);
+
+            lblRow3Summary.Left = lblRow3Title.Right + lead;
+            lblRow3Summary.Width = Math.Max(minW, lblRow3Toggle.Left - lblRow3Summary.Left - trail);
 
             lblRow1Summary.BringToFront();
             lblRow2Summary.BringToFront();
@@ -387,7 +431,7 @@ namespace StayOnTheLine.Forms
             else
             {
                 lblRow1Summary.Text = $"Master: {_pendingSettings.MasterVolume}%  ·  Ambience: {_pendingSettings.AmbientVolume}%  ·  SFX: {_pendingSettings.SfxVolume}%";
-                lblRow1Summary.ForeColor = Color.FromArgb(85, 65, 45);
+                lblRow1Summary.ForeColor = Color.FromArgb(55, 38, 22);
             }
 
             // Row 2 Summary
@@ -603,9 +647,9 @@ namespace StayOnTheLine.Forms
             // Speed selection cards - Soft rounded corners & gold frame
             Label[] speedCards = { btnSpeedSlow, btnSpeedStandard, btnSpeedInstant };
             string[] speedCardTexts = {
-                "SLOW\r\n\r\n65 MS / CHAR\r\n\r\nAuthentic manual typewriter cadence.\r\nDeliberate character printing.",
-                "STANDARD\r\n\r\n30 MS / CHAR\r\n\r\nRecommended dispatch pacing.\r\nBalanced reading flow.",
-                "INSTANT\r\n\r\n0 MS / CHAR\r\n\r\nImmediate line readout.\r\nBypasses typewriter delay."
+                "SLOW|65 ms / char|Authentic manual typewriter cadence. Deliberate character printing.",
+                "STANDARD|30 ms / char|Recommended dispatch pacing. Balanced reading flow.",
+                "INSTANT|0 ms / char|Immediate line readout. Bypasses typewriter delay."
             };
 
             for (int i = 0; i < speedCards.Length; i++)
@@ -657,13 +701,29 @@ namespace StayOnTheLine.Forms
                         ? Color.FromArgb(248, 244, 232)
                         : (isHovered ? Color.FromArgb(140, 50, 30) : Color.FromArgb(45, 30, 15));
 
-                    TextRenderer.DrawText(
-                        e.Graphics,
-                        speedCardTexts[cardIdx],
-                        card.Font,
-                        r,
-                        textColor,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak);
+                    // Title / speed / description, each in its own size so the card reads at a glance
+                    string[] parts = speedCardTexts[cardIdx].Split('|');
+                    float k = card.Font.Size / 9.5f;
+                    using var fontTitle = FontManager.GetSmallCapsFont(15f * k, FontStyle.Bold);
+                    using var fontSpeed = FontManager.GetSmallCapsFont(12.5f * k, FontStyle.Bold);
+                    using var fontDesc = FontManager.GetItalicFont(12f * k);
+                    var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak;
+                    int padX = (int)(14 * k);
+                    int innerW = Math.Max(10, card.Width - padX * 2);
+
+                    var szTitle = TextRenderer.MeasureText(parts[0], fontTitle, new Size(innerW, int.MaxValue), flags);
+                    var szSpeed = TextRenderer.MeasureText(parts[1], fontSpeed, new Size(innerW, int.MaxValue), flags);
+                    var szDesc = TextRenderer.MeasureText(parts[2], fontDesc, new Size(innerW, int.MaxValue), flags);
+                    int gap = (int)(8 * k);
+                    int total = szTitle.Height + szSpeed.Height + szDesc.Height + gap * 2;
+                    int y = Math.Max(2, (card.Height - total) / 2);
+
+                    Color subColor = isActive ? Color.FromArgb(225, 205, 170) : (isHovered ? Color.FromArgb(140, 50, 30) : Color.FromArgb(70, 50, 30));
+                    TextRenderer.DrawText(e.Graphics, parts[0], fontTitle, new Rectangle(padX, y, innerW, szTitle.Height), textColor, flags);
+                    y += szTitle.Height + gap;
+                    TextRenderer.DrawText(e.Graphics, parts[1], fontSpeed, new Rectangle(padX, y, innerW, szSpeed.Height), subColor, flags);
+                    y += szSpeed.Height + gap;
+                    TextRenderer.DrawText(e.Graphics, parts[2], fontDesc, new Rectangle(padX, y, innerW, szDesc.Height + 2), textColor, flags);
                 };
             }
 
@@ -1047,24 +1107,23 @@ namespace StayOnTheLine.Forms
         {
             AudioManager.Instance.PlayFrequencyBlip();
 
-            var result = MessageBox.Show(
+            bool confirmed = ParchmentNoticeDialog.Confirm(
                 this,
-                "CONFIRM PURGE OF ALL OPERATOR ARCHIVES?\n\nThis will permanently incinerate and delete shift records in Slots 1, 2, and 3 from disk.\nAll recorded frequency progress will be permanently lost.\n\nProceed with factory wipe?",
-                "Emergency Station Purge Confirmation",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+                "INCINERATION PROTOCOL // ALL FILES",
+                "Purge every operator archive?",
+                "This will permanently incinerate the shift records in Slots 1, 2, and 3. All recorded frequency progress will be lost.",
+                "PURGE ALL FILES");
 
-            if (result == DialogResult.Yes)
+            if (confirmed)
             {
                 SettingsManager.Instance.PurgeAllShiftLogs();
                 AudioManager.Instance.PlayBurnHiss();
 
-                MessageBox.Show(
+                ParchmentNoticeDialog.ShowNotice(
                     this,
-                    "ALL OPERATOR ARCHIVES PURGED.\nArchive slots 1, 2, and 3 are now vacant and reset.",
-                    "Station Archive Cleared",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                    "STATION ARCHIVE // CLEARED",
+                    "All operator archives purged.",
+                    "Archive slots 1, 2, and 3 are now vacant and reset.");
             }
         }
 

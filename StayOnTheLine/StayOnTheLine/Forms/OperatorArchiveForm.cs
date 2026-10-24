@@ -24,6 +24,7 @@ namespace StayOnTheLine.Forms
         private int _currentHoveredIndex = -1;
         private int? _mostRecentSlot;
         private Font? _activeStampFont;
+        private DesignScaler? _scaler;
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public OperatorProfile? SelectedProfile { get; private set; }
@@ -65,6 +66,7 @@ namespace StayOnTheLine.Forms
             LoadBackgroundImages();
             SetupCustomSlotPainting();
             WireSlotEvents();
+            _scaler = new DesignScaler(this);
         }
 
         private static void EnableDoubleBuffering(Control control)
@@ -200,9 +202,14 @@ namespace StayOnTheLine.Forms
             float nameWidth = 100;
             try
             {
-                nameWidth = g.MeasureString(operatorName, _slotNames[0].Font).Width;
+                nameWidth = g.MeasureString(operatorName, _slotNames[0].Font).Width / (_scaler?.Factor ?? 1f);
             }
             catch { }
+
+            // Stamp geometry is in 1920x1080 design units; scale it with the ledger
+            var outerState = g.Save();
+            float factor = _scaler?.Factor ?? 1f;
+            g.ScaleTransform(factor, factor);
 
             float stampWidth = 205;
             float stampHeight = 30;
@@ -254,6 +261,7 @@ namespace StayOnTheLine.Forms
 
             // Vintage Brass Paperclip on the left top edge
             DrawVintagePaperclip(g, isHovered);
+            g.Restore(outerState);
         }
 
         private static void DrawVintagePaperclip(Graphics g, bool isHovered)
@@ -434,6 +442,7 @@ namespace StayOnTheLine.Forms
         {
             if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
 
+            _scaler?.Apply(DesignScaler.FactorFor(ClientSize));
             pnlParchmentLedger.Left = (ClientSize.Width - pnlParchmentLedger.Width) / 2;
             pnlParchmentLedger.Top = (ClientSize.Height - pnlParchmentLedger.Height) / 2;
         }

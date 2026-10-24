@@ -36,6 +36,7 @@ namespace StayOnTheLine.Forms
             ApplyFonts();
             LoadParchmentBackground();
             WireButtonEvents();
+            lblClose.BringToFront();
         }
 
         private static void EnableDoubleBuffering(Control control)
@@ -129,6 +130,7 @@ namespace StayOnTheLine.Forms
 
         private void CreateShiftDialog_Load(object? sender, EventArgs e)
         {
+            DesignScaler.FitDialog(this);
             lblFileHeader.Text = $"RESTRICTED PERSONNEL RECORD // FILE {SlotIndex:D2}";
             UpdateStartButtonState();
             txtOperatorName.Focus();
