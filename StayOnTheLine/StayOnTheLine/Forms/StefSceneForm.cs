@@ -21,10 +21,11 @@ namespace StayOnTheLine.Forms
     /// 3. SEPARATION OF CONCERNS: The DialogueRunner decides what happens next; this form only
     ///    decides when and how it is shown (typing delays, slides, cues, sounds).
     ///
-    /// Shift 3 "Stef scene": Stef messages the player on the records terminal about strange
-    /// timestamps, shares an audit log that ties the edits to the player's own login, and is
-    /// interrupted when Charm walks up to the desk. Closes with DialogResult.OK when the player
-    /// returns to the queue; the evidence flags are written to the profile's AnomalyFlags.
+    /// Shift 3 "Stef scene": plays one records-terminal thread (a <see cref="ConversationScript"/>).
+    /// Mid-shift, Stef asks about strange timestamps, shares an audit log tied to the player's own
+    /// login, and is interrupted by Charm; at the end of the shift she reports an authorized account
+    /// and the connection drops. Closes with DialogResult.OK when the player finishes the thread;
+    /// the evidence flags are written to the profile's AnomalyFlags.
     /// </summary>
     public class StefSceneForm : BaseGameForm
     {
@@ -36,7 +37,8 @@ namespace StayOnTheLine.Forms
         };
 
         private readonly OperatorProfile? _profile;
-        private readonly SceneClock _clock = new(DateTime.Today.AddHours(1).AddMinutes(50));
+        private readonly ConversationScript _script;
+        private readonly SceneClock _clock;
         private readonly DialogueRunner _runner;
         private readonly Dictionary<string, Image?> _sprites = new();
         private readonly Random _rng = new();
@@ -73,10 +75,12 @@ namespace StayOnTheLine.Forms
 
         public IReadOnlyCollection<string> EvidenceFlags => _runner.EvidenceFlags;
 
-        public StefSceneForm(OperatorProfile? profile = null)
+        public StefSceneForm(OperatorProfile? profile = null, ConversationScript? script = null)
         {
             _profile = profile;
-            _runner = new DialogueRunner(StefConversation.Build(), () => _clock.Now);
+            _script = script ?? StefConversation.MidShift();
+            _clock = new SceneClock(DateTime.Today.Add(_script.ClockStart));
+            _runner = new DialogueRunner(_script.Nodes, () => _clock.Now);
 
             Text = "Stay On The Line - Shift 03: Records Archive";
             KeyPreview = true;
@@ -171,7 +175,7 @@ namespace StayOnTheLine.Forms
             // Stef slides in while the first line is on its way
             _stefTarget = 1f;
             _anim.Start();
-            _runner.Start(StefConversation.StartNodeId);
+            _runner.Start(_script.StartNodeId);
             _extraDelay = 900;
             ScheduleNext();
         }
@@ -289,6 +293,14 @@ namespace StayOnTheLine.Forms
                 _stefTarget = 1f;
                 _caption.Visible = false;
             }
+            if ((cue & SceneCue.ConnectionLost) != 0)
+            {
+                // Stef drops off the line: her status dies, the screen stutters and she slides away
+                _messenger.SetStatus("USER UNAVAILABLE", alert: true);
+                _messenger.TriggerGlitch();
+                _clockGlitchTicks = 8;
+                _stefTarget = 0f;
+            }
             _anim.Start();
         }
 
@@ -311,10 +323,8 @@ namespace StayOnTheLine.Forms
             }
             else if (_runner.IsFinished)
             {
-                _messenger.Status = "CONNECTION ACTIVE";
-                response.ShowAction("THREAD STILL OPEN",
-                    "Stef's line stays active in the background. Save a copy of the log before you return to the queue.",
-                    "RETURN TO QUEUE", "CONNECTION ACTIVE");
+                if (_script.EndStatus != null) _messenger.SetStatus(_script.EndStatus, alert: false);
+                response.ShowAction(_script.EndTitle, _script.EndBody, _script.EndButton, _messenger.Status);
             }
         }
 
@@ -338,15 +348,25 @@ namespace StayOnTheLine.Forms
             }
             if (!_runner.IsAwaitingAction) return;
 
+            var action = _runner.CurrentNode!.Action!;
             _runner.CompleteAction();
-            _messenger.Response.ShowWaiting("REVIEWING AUDIT LOG");
-            OpenAuditLog();
-            _holdForAudit = true; // Stef waits until the log has finished printing
+
+            if ((action.Cue & SceneCue.OpenAuditLog) != 0)
+            {
+                _messenger.Response.ShowWaiting("REVIEWING AUDIT LOG");
+                OpenAuditLog();
+                _holdForAudit = true; // Stef waits until the log has finished printing
+            }
+            HandleCue(action.Cue & ~SceneCue.OpenAuditLog);
+            ScheduleNext();
         }
+
+        private bool AwaitingAuditAction =>
+            _runner.IsAwaitingAction && (_runner.CurrentNode!.Action!.Cue & SceneCue.OpenAuditLog) != 0;
 
         private void OnAuditButton()
         {
-            if (_runner.IsAwaitingAction) OnPlayerAction();
+            if (AwaitingAuditAction) OnPlayerAction();
             else if (_auditTarget > 0f) CloseAuditLog();
             else OpenAuditLog();
         }
@@ -402,8 +422,8 @@ namespace StayOnTheLine.Forms
             {
                 foreach (string flag in _runner.EvidenceFlags)
                     if (!_profile.AnomalyFlags.Contains(flag)) _profile.AnomalyFlags.Add(flag);
-                if (!_profile.AnomalyFlags.Contains(StefConversation.FlagSceneSeen))
-                    _profile.AnomalyFlags.Add(StefConversation.FlagSceneSeen);
+                if (_script.SeenFlag.Length > 0 && !_profile.AnomalyFlags.Contains(_script.SeenFlag))
+                    _profile.AnomalyFlags.Add(_script.SeenFlag);
             }
             DialogResult = DialogResult.OK;
             Close();
@@ -568,7 +588,7 @@ namespace StayOnTheLine.Forms
             using var ink = new SolidBrush(MessengerTheme.CrtInk);
 
             g.DrawString("NIGHT DESK  //  SHIFT 03", _theme.Caps, ink, strip, Shapes.Left);
-            g.DrawString("CALL 02 OF 03", _theme.Caps, ink, strip, Shapes.Center);
+            g.DrawString(_script.CallLabel, _theme.Caps, ink, strip, Shapes.Center);
 
             // The clock occasionally shows seconds that cannot exist
             var now = _clock.Now;

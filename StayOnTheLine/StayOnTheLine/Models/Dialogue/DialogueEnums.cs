@@ -35,6 +35,8 @@ namespace StayOnTheLine.Models.Dialogue
         CloseAuditLog = 4,
         CharmEnters = 8,
         CharmLeaves = 16,
-        StefReturns = 32
+        StefReturns = 32,
+        ConnectionLost = 64,
+        OpenAuditLog = 128
     }
 }

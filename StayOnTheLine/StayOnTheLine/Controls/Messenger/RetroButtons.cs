@@ -152,10 +152,13 @@ namespace StayOnTheLine.Controls.Messenger
             }
 
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            string label = Primary ? Text.ToUpperInvariant() : Text;
             Font font = Primary ? t.Title : t.Caps;
+            // Long action labels ("ATTEMPT TO RECONNECT") drop to the smaller caps face instead of being cut off
+            if (Primary && g.MeasureString(label, font).Width > bounds.Width - t.F(16)) font = t.Caps;
             Color ink = !Enabled ? MessengerTheme.MutedInk : Primary ? Color.FromArgb(28, 58, 98) : MessengerTheme.Ink;
             using var brush = new SolidBrush(ink);
-            g.DrawString(Primary ? Text.ToUpperInvariant() : Text, font, brush, new RectangleF(0, 0, bounds.Width, bounds.Height), Shapes.Center);
+            g.DrawString(label, font, brush, new RectangleF(0, 0, bounds.Width, bounds.Height), Shapes.Center);
         }
     }
 }

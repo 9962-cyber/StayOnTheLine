@@ -19,7 +19,7 @@ namespace StayOnTheLine.Forms
     ///    visual tutorial guidance system, and physical End-of-Shift clipboard modal.
     /// 4. ABSTRACTION: Decouples UI interactions from scenario scripts via IShiftScenario.
     /// </summary>
-    public class ShiftPlayForm : BaseShiftForm
+    public partial class ShiftPlayForm : BaseShiftForm
     {
         public enum ViewState
         {
@@ -1228,7 +1228,7 @@ namespace StayOnTheLine.Forms
                     TagColor = Color.FromArgb(255, 120, 120),
                     OnClick = () =>
                     {
-                        _lblSupervisorBar.Text = Scenario.ShiftNumber == 2
+                        _lblSupervisorBar.Text = Scenario.ShiftNumber >= 2
                             ? "YSA: Line 08 is locked by Civil Defense directive. Do not touch it."
                             : "KRISHA: Look at the yellow note on your desk: 'Line 08 Do not answer.' That channel has been dead for twenty years.";
                         AudioManager.Instance.PlayFrequencyBlip();
@@ -2114,6 +2114,10 @@ namespace StayOnTheLine.Forms
                         break;
                 }
             }
+            else if (Scenario.ShiftNumber == 3) // SHIFT 3 – see ShiftPlayForm.Shift3.cs
+            {
+                AddShift3Choices(call, choices);
+            }
 
             SetDynamicActionChoices(choices);
             UpdatePhoneRing();
@@ -2128,7 +2132,8 @@ namespace StayOnTheLine.Forms
             var call = CurrentCall;
             bool reportOpen = _pnlDebriefModal != null && _pnlDebriefModal.Visible;
             bool ringing = !reportOpen && !call.IsRestricted &&
-                           call.Stage == CallStage.Ringing && call.Status != CallQueueStatus.Resolved;
+                           call.Stage == CallStage.Ringing && call.Status != CallQueueStatus.Resolved &&
+                           !Shift3BriefingPending; // Shift 3: the first call rings after the briefing
 
             if (ringing) AudioManager.Instance.StartPhoneRing();
             else AudioManager.Instance.StopPhoneRing();
@@ -3951,6 +3956,7 @@ namespace StayOnTheLine.Forms
             // Start in Desk Room View so the player sees their station, then clicks into computer
             SwitchView(ViewState.DeskRoom);
             UpdatePhoneRing(); // the first line is already ringing while you sit at the desk
+            if (Scenario.ShiftNumber == 3) PlayShift3OpeningScene();
         }
     }
 

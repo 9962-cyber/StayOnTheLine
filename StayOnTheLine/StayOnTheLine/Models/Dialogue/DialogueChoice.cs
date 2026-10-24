@@ -20,5 +20,8 @@ namespace StayOnTheLine.Models.Dialogue
     public sealed record PlayerAction(string Title, string Description, string ButtonText, string TargetNodeId)
     {
         public string? EvidenceFlag { get; init; }
+
+        /// <summary>Scene event fired when the player performs the action (e.g. opening the audit log).</summary>
+        public SceneCue Cue { get; init; } = SceneCue.None;
     }
 }

@@ -12,7 +12,7 @@ namespace StayOnTheLine.Controls
     /// </summary>
     public class CharacterDialogueBox : Control
     {
-        private sealed record DialogueLine(string Speaker, string Text, Image? Portrait);
+        private sealed record DialogueLine(string Speaker, string Text, Image? Portrait, string Tag);
 
         private readonly Queue<DialogueLine> _queue = new();
         private readonly System.Windows.Forms.Timer _typeTimer = new() { Interval = 18 };
@@ -57,9 +57,10 @@ namespace StayOnTheLine.Controls
         }
 
         /// <summary>Queues a line; the scene appears if it was hidden.</summary>
-        public void Enqueue(string speaker, string text, Image? portrait)
+        /// <param name="tag">Label shown opposite the speaker's name (Charm's console by default).</param>
+        public void Enqueue(string speaker, string text, Image? portrait, string tag = "NEIGHBORING CONSOLE")
         {
-            _queue.Enqueue(new DialogueLine(speaker, text, portrait));
+            _queue.Enqueue(new DialogueLine(speaker, text, portrait, tag));
             if (_current == null) ShowNext();
         }
 
@@ -162,7 +163,7 @@ namespace StayOnTheLine.Controls
                 TextRenderer.DrawText(g, _current.Speaker, fontName, new Point(textLeft, pad - (int)(2 * s)), Color.White, TextFormatFlags.NoPrefix);
 
                 using var fontTag = FontManager.GetSmallCapsFont(10f * s);
-                TextRenderer.DrawText(g, "NEIGHBORING CONSOLE", fontTag,
+                TextRenderer.DrawText(g, _current.Tag, fontTag,
                     new Rectangle(textLeft, pad, W - textLeft - pad, (int)(24 * s)), Color.Gray,
                     TextFormatFlags.Right | TextFormatFlags.NoPrefix);
             }
@@ -252,7 +253,7 @@ namespace StayOnTheLine.Controls
                 TextRenderer.DrawText(g, _current.Speaker, fontName, new Point(textLeft, rc.Y + (int)(22 * s)), Color.White, TextFormatFlags.NoPrefix);
 
                 using var fontTag = FontManager.GetSmallCapsFont(11f * s);
-                TextRenderer.DrawText(g, "NEIGHBORING CONSOLE", fontTag,
+                TextRenderer.DrawText(g, _current.Tag, fontTag,
                     new Rectangle(rc.X, rc.Y + (int)(24 * s), rc.Width - pad, (int)(30 * s)), Color.Gray,
                     TextFormatFlags.Right | TextFormatFlags.NoPrefix);
             }

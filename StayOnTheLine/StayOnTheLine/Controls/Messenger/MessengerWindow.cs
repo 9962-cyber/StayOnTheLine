@@ -33,13 +33,18 @@ namespace StayOnTheLine.Controls.Messenger
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public string ContactRole { get; set; } = "Records Archive";
 
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public string Status
-        {
-            get => _status;
-            set { _status = value; _shownStatus = value; Invalidate(); }
-        }
+        public string Status => _status;
         private string _status = "ONLINE";
+        private bool _statusAlert;
+
+        /// <summary>Sets the contact status; alert statuses (e.g. USER UNAVAILABLE) are drawn in red.</summary>
+        public void SetStatus(string status, bool alert)
+        {
+            _status = status;
+            _shownStatus = status;
+            _statusAlert = alert;
+            Invalidate();
+        }
 
         /// <summary>Left edge of the chat thread inside this window (the sidebar's right edge).</summary>
         public int ThreadLeft { get; private set; }
@@ -239,7 +244,7 @@ namespace StayOnTheLine.Controls.Messenger
             g.DrawString(ContactRole, t.Caps, muted, new RectangleF(textX, header.Y + t.F(32), t.F(300), t.F(20)), Shapes.Left);
 
             bool glitching = _glitchFrames > 0;
-            using var statusBrush = new SolidBrush(glitching ? MessengerTheme.AlertInk : MessengerTheme.SystemInk);
+            using var statusBrush = new SolidBrush(glitching || _statusAlert ? MessengerTheme.AlertInk : MessengerTheme.SystemInk);
             g.DrawString(_shownStatus, t.Caps, statusBrush, new RectangleF(header.X, header.Y, header.Width - t.F(16), header.Height), Shapes.Right);
 
             // Tabs strip
