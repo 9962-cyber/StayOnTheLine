@@ -3327,7 +3327,7 @@ namespace StayOnTheLine.Forms
                 const TextFormatFlags oneLine = TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
 
                 using var fontSub = FontManager.GetSmallCapsFont(10f * scale);
-                TextRenderer.DrawText(g, "Municipal Emergency Services · Confidential", fontSub,
+                TextRenderer.DrawText(g, "Night Watch Emergency Services · Confidential", fontSub,
                     new Rectangle(contentX, currY, contentW, (int)(20 * scale)), inkMuted, TextFormatFlags.HorizontalCenter | oneLine);
                 currY += (int)(20 * scale);
 
@@ -3480,7 +3480,7 @@ namespace StayOnTheLine.Forms
                 footerY += (int)(8 * scale);
 
                 using var fontNotice = FontManager.GetSmallCapsFont(8f * scale);
-                TextRenderer.DrawText(g, "Official property of Municipal Emergency Services.\nDisclosure prohibited under Code 402.", fontNotice,
+                TextRenderer.DrawText(g, "Official property of Night Watch Emergency Services.\nDisclosure prohibited under Code 402.", fontNotice,
                     new Rectangle(contentX, footerY, (int)(contentW * 0.56f), (int)(32 * scale)), inkMuted, TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
 
                 int sigX = contentX + (int)(contentW * 0.56f);
@@ -3603,7 +3603,7 @@ namespace StayOnTheLine.Forms
                 {
                     bool endEarly = ParchmentNoticeDialog.Confirm(
                         this,
-                        "MUNICIPAL EMERGENCY SERVICES // EARLY SUBMISSION",
+                        "NIGHT WATCH EMERGENCY SERVICES // EARLY SUBMISSION",
                         "End your shift early?",
                         "You still have pending emergency trunk lines on the switchboard. Submitting an incomplete report will log every unhandled line as an infraction.",
                         "SUBMIT REPORT",

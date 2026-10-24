@@ -156,23 +156,23 @@ namespace StayOnTheLine.Forms
             using var ink = new SolidBrush(BookInk);
             using var muted = new SolidBrush(BookMuted);
             using var rule = new Pen(BookRule, Math.Max(1f, 1.2f * s));
-            using var tagFont = FontManager.GetSmallCapsFont(9.5f * s);
-            using var titleFont = FontManager.GetSmallCapsFont(36f * s);
+            using var tagFont = FontManager.GetSmallCapsFont(12.5f * s);
+            using var titleFont = FontManager.GetSmallCapsFont(46f * s);
 
             // ── Left page: who is on shift tonight ──
-            g.DrawString("MUNICIPAL EMERGENCY SERVICES · FORM 08", tagFont, muted, left.X, left.Y);
-            g.DrawString("Shift Briefing", titleFont, ink, left.X - 4 * s, left.Y + 30 * s);
+            g.DrawString("NIGHT WATCH EMERGENCY SERVICES · FORM 08", tagFont, muted, left.X, left.Y);
+            g.DrawString("Shift Briefing", titleFont, ink, left.X - 5 * s, left.Y + 26 * s);
 
-            float y = left.Y + 150 * s;
-            float valueX = left.X + 175 * s;
+            float y = left.Y + 165 * s;
+            float valueX = left.X + 185 * s;
             g.DrawString("DISPATCHER 04", tagFont, muted, left.X, y);
-            using (var nameFont = FontManager.GetSmallCapsFont(38f * s))
-                g.DrawString(Profile.OperatorName, nameFont, ink, new RectangleF(left.X - 4 * s, y + 20 * s, left.Width, 70 * s));
-            using (var roleFont = FontManager.GetSmallCapsFont(11f * s))
-                g.DrawString("Probationary operator · Night desk", roleFont, muted, left.X, y + 92 * s);
-            g.DrawLine(rule, left.X, y + 128 * s, left.Right - 10 * s, y + 128 * s);
+            using (var nameFont = FontManager.GetSmallCapsFont(44f * s))
+                g.DrawString(Profile.OperatorName, nameFont, ink, new RectangleF(left.X - 5 * s, y + 20 * s, left.Width, 80 * s));
+            using (var roleFont = FontManager.GetSmallCapsFont(14f * s))
+                g.DrawString("Probationary operator · Night desk", roleFont, muted, left.X, y + 102 * s);
+            g.DrawLine(rule, left.X, y + 140 * s, left.Right - 10 * s, y + 140 * s);
 
-            y += 160 * s;
+            y += 172 * s;
             var rows = new[]
             {
                 ("SHIFT", $"{briefing.ShiftLabel} / {briefing.Hours}"),
@@ -181,40 +181,40 @@ namespace StayOnTheLine.Forms
                 ("TERMINAL", "04 · Night desk"),
                 ("SUPERVISOR", System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(Scenario.SupervisorName.ToLowerInvariant()))
             };
-            using (var valueFont = FontManager.GetSmallCapsFont(19f * s))
+            using (var valueFont = FontManager.GetSmallCapsFont(23f * s))
             {
                 foreach (var (key, val) in rows)
                 {
-                    g.DrawString(key, tagFont, muted, left.X, y + 12 * s);
+                    g.DrawString(key, tagFont, muted, left.X, y + 14 * s);
                     g.DrawString(val, valueFont, ink, valueX, y);
-                    g.DrawLine(rule, left.X, y + 50 * s, left.Right - 10 * s, y + 50 * s);
-                    y += 74 * s;
+                    g.DrawLine(rule, left.X, y + 54 * s, left.Right - 10 * s, y + 54 * s);
+                    y += 78 * s;
                 }
             }
 
             // ── Right page: tonight's procedure ──
             g.DrawString($"SUPERVISOR MEMO / {Scenario.SupervisorName}", tagFont, muted, right.X, right.Y);
-            g.DrawString("Procedure", titleFont, ink, right.X - 4 * s, right.Y + 30 * s);
+            g.DrawString("Procedure", titleFont, ink, right.X - 5 * s, right.Y + 26 * s);
 
-            float stepY = right.Y + 150 * s;
-            using (var stepFont = FontManager.GetSmallCapsFont(15.5f * s))
+            float stepY = right.Y + 170 * s;
+            using (var stepFont = FontManager.GetSmallCapsFont(18.5f * s))
+            using (var numFont = FontManager.GetSmallCapsFont(16f * s, FontStyle.Bold))
             {
                 for (int i = 0; i < briefing.Procedure.Count; i++)
                 {
-                    using (var numFont = FontManager.GetSmallCapsFont(14f * s, FontStyle.Bold))
-                        g.DrawString((i + 1).ToString("D2"), numFont, muted, right.X, stepY + 1 * s);
-                    var box = new RectangleF(right.X + 58 * s, stepY, right.Width - 58 * s, 96 * s);
+                    g.DrawString((i + 1).ToString("D2"), numFont, muted, right.X, stepY + 2 * s);
+                    var box = new RectangleF(right.X + 62 * s, stepY, right.Width - 62 * s, 120 * s);
                     g.DrawString(briefing.Procedure[i], stepFont, ink, box);
                     float used = g.MeasureString(briefing.Procedure[i], stepFont, (int)box.Width).Height;
-                    stepY += Math.Max(58 * s, used + 24 * s);
+                    stepY += Math.Max(62 * s, used + 26 * s);
                 }
             }
 
             // Handwritten margin note, in red, tilted like it was scribbled in a hurry
-            using (var noteFont = FontManager.GetSmallCapsFont(19f * s))
+            using (var noteFont = FontManager.GetSmallCapsFont(21f * s))
             using (var noteBrush = new SolidBrush(BookNote))
             {
-                var noteBox = new RectangleF(right.X + 20 * s, Math.Max(stepY + 40 * s, right.Y + 500 * s), right.Width - 40 * s, 220 * s);
+                var noteBox = new RectangleF(right.X + 20 * s, Math.Max(stepY + 40 * s, right.Y + 520 * s), right.Width - 40 * s, 230 * s);
                 var state = g.Save();
                 g.TranslateTransform(noteBox.X, noteBox.Y);
                 g.RotateTransform(-5f);
@@ -223,7 +223,7 @@ namespace StayOnTheLine.Forms
             }
 
             // [ CLOCK IN ] inked in the bottom corner of the right page
-            using (var clockFont = FontManager.GetSmallCapsFont(15f * s))
+            using (var clockFont = FontManager.GetSmallCapsFont(17f * s))
             {
                 const string label = "[ CLOCK IN ]";
                 SizeF size = g.MeasureString(label, clockFont);
