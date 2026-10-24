@@ -92,6 +92,7 @@ namespace StayOnTheLine
                 case Keys.Enter: if (selected >= 0) Activate(selected); break;
                 case Keys.Escape: Application.Exit(); break;
                 case Keys.F1: OpenTutorialFlow(); break; // Open tutorial with F1
+                case Keys.F3: OpenStefSceneFlow(); break; // Open the Shift 3 Stef scene with F3
             }
         }
 
@@ -192,6 +193,25 @@ namespace StayOnTheLine
             tutorial.Activate();
             tutorial.Focus();
             tutorial.Update();
+        }
+
+        // Opens the Shift 3 records-terminal scene (Stef's messenger thread) for the most recent save.
+        // Flags are applied to the profile in memory only; the shift flow is responsible for saving.
+        private void OpenStefSceneFlow()
+        {
+            int? slot = SaveManager.Instance.GetMostRecentSlot();
+            var profile = slot.HasValue ? SaveManager.Instance.GetProfile(slot.Value) : null;
+            var scene = new Forms.StefSceneForm(profile);
+
+            scene.Shown += (s, e) => this.Hide();
+            scene.FormClosed += (s, e) =>
+            {
+                this.Show();
+                this.BringToFront();
+                this.Activate();
+                scene.Dispose();
+            };
+            scene.Show();
         }
 
         private void OpenShiftFlow(Models.OperatorProfile profile, Controls.OperatorVerificationOverlay? overlay = null, Action? onShown = null)

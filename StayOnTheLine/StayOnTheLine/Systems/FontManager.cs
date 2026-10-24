@@ -12,6 +12,11 @@ namespace StayOnTheLine.Systems
         private static readonly PrivateFontCollection s_fontCollection = new();
         private static FontFamily? s_imFellSCFamily;
         private static FontFamily? s_imFellItalicFamily;
+
+        // The Regular and Italic files share one family name, and GDI+ serves the italic face for
+        // every style once both are in a collection, so the upright face gets a collection of its own.
+        private static readonly PrivateFontCollection s_regularCollection = new();
+        private static FontFamily? s_imFellRegularFamily;
         private static bool s_isInitialized = false;
 
         public static bool IsLoaded => s_isInitialized;
@@ -54,6 +59,9 @@ namespace StayOnTheLine.Systems
                 if (File.Exists(regPath))
                 {
                     s_fontCollection.AddFontFile(regPath);
+                    s_regularCollection.AddFontFile(regPath);
+                    if (s_regularCollection.Families.Length > 0)
+                        s_imFellRegularFamily = s_regularCollection.Families[0];
                 }
 
                 foreach (var family in s_fontCollection.Families)
@@ -92,6 +100,44 @@ namespace StayOnTheLine.Systems
             {
                 return new Font("Georgia", size, style, GraphicsUnit.Point);
             }
+        }
+
+        /// <summary>
+        /// Retrieves upright IM FELL DW Pica, falling back to Georgia, then the generic serif.
+        /// </summary>
+        public static Font GetRegularFont(float size, FontStyle style = FontStyle.Regular)
+        {
+            if (s_imFellRegularFamily != null)
+            {
+                try { return new Font(s_imFellRegularFamily, size, style, GraphicsUnit.Point); } catch { }
+            }
+
+            return TryCreateInstalled("IM FELL DW Pica", size, style)
+                ?? TryCreateInstalled("Georgia", size, style)
+                ?? new Font(FontFamily.GenericSerif, size, style, GraphicsUnit.Point);
+        }
+
+        /// <summary>
+        /// Terminal / system text: Consolas, falling back to the generic monospace font.
+        /// </summary>
+        public static Font GetMonospaceFont(float size, FontStyle style = FontStyle.Regular)
+        {
+            return TryCreateInstalled("Consolas", size, style)
+                ?? TryCreateInstalled("Courier New", size, style)
+                ?? new Font(FontFamily.GenericMonospace, size, style, GraphicsUnit.Point);
+        }
+
+        // GDI+ silently substitutes a missing family, so compare the resolved name
+        private static Font? TryCreateInstalled(string family, float size, FontStyle style)
+        {
+            try
+            {
+                var font = new Font(family, size, style, GraphicsUnit.Point);
+                if (string.Equals(font.Name, family, StringComparison.OrdinalIgnoreCase)) return font;
+                font.Dispose();
+            }
+            catch { }
+            return null;
         }
 
         /// <summary>
