@@ -120,7 +120,7 @@ namespace StayOnTheLine.Forms
             // lblHeaderSubtitle
             // 
             lblHeaderSubtitle.BackColor = Color.Transparent;
-            lblHeaderSubtitle.Font = new Font("IM FELL DW Pica", 12.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblHeaderSubtitle.Font = new Font("IM FELL DW Pica SC", 12.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblHeaderSubtitle.ForeColor = Color.FromArgb(48, 32, 18);
             lblHeaderSubtitle.Location = new Point(180, 112);
             lblHeaderSubtitle.Name = "lblHeaderSubtitle";
@@ -175,7 +175,7 @@ namespace StayOnTheLine.Forms
             // 
             lblTagline.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblTagline.BackColor = Color.Transparent;
-            lblTagline.Font = new Font("IM FELL DW Pica", 11.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblTagline.Font = new Font("IM FELL DW Pica SC", 11.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblTagline.ForeColor = Color.FromArgb(50, 35, 20);
             lblTagline.Location = new Point(600, 176);
             lblTagline.Name = "lblTagline";
@@ -297,7 +297,7 @@ namespace StayOnTheLine.Forms
             // lblAudioDesc
             // 
             lblAudioDesc.BackColor = Color.Transparent;
-            lblAudioDesc.Font = new Font("IM FELL DW Pica", 10F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblAudioDesc.Font = new Font("IM FELL DW Pica SC", 10F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblAudioDesc.ForeColor = Color.FromArgb(70, 50, 32);
             lblAudioDesc.Location = new Point(60, 16);
             lblAudioDesc.Name = "lblAudioDesc";
@@ -324,7 +324,7 @@ namespace StayOnTheLine.Forms
             // lblAudioHint
             // 
             lblAudioHint.BackColor = Color.Transparent;
-            lblAudioHint.Font = new Font("IM FELL DW Pica", 9F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblAudioHint.Font = new Font("IM FELL DW Pica SC", 9F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblAudioHint.ForeColor = Color.FromArgb(90, 70, 50);
             lblAudioHint.Location = new Point(60, 138);
             lblAudioHint.Name = "lblAudioHint";
@@ -539,7 +539,7 @@ namespace StayOnTheLine.Forms
             // lblTeletypeDesc
             // 
             lblTeletypeDesc.BackColor = Color.Transparent;
-            lblTeletypeDesc.Font = new Font("IM FELL DW Pica", 11F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblTeletypeDesc.Font = new Font("IM FELL DW Pica SC", 11F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblTeletypeDesc.ForeColor = Color.FromArgb(60, 42, 26);
             lblTeletypeDesc.Location = new Point(60, 14);
             lblTeletypeDesc.Name = "lblTeletypeDesc";
@@ -721,7 +721,7 @@ namespace StayOnTheLine.Forms
             // lblPurgeDetails
             // 
             lblPurgeDetails.BackColor = Color.Transparent;
-            lblPurgeDetails.Font = new Font("IM FELL DW Pica", 10F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblPurgeDetails.Font = new Font("IM FELL DW Pica SC", 10F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblPurgeDetails.ForeColor = Color.FromArgb(60, 42, 26);
             lblPurgeDetails.Location = new Point(20, 42);
             lblPurgeDetails.Name = "lblPurgeDetails";
@@ -733,7 +733,7 @@ namespace StayOnTheLine.Forms
             // lblPersistentInfo
             // 
             lblPersistentInfo.BackColor = Color.Transparent;
-            lblPersistentInfo.Font = new Font("IM FELL DW Pica", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblPersistentInfo.Font = new Font("IM FELL DW Pica SC", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
             lblPersistentInfo.ForeColor = Color.FromArgb(85, 70, 50);
             lblPersistentInfo.Location = new Point(20, 100);
             lblPersistentInfo.Name = "lblPersistentInfo";
@@ -761,7 +761,7 @@ namespace StayOnTheLine.Forms
             // 
             lblFooterHelp.AutoSize = false;
             lblFooterHelp.BackColor = Color.Transparent;
-            lblFooterHelp.Font = new Font("IM FELL DW Pica", 9.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblFooterHelp.Font = new Font("IM FELL DW Pica SC", 9.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblFooterHelp.ForeColor = Color.FromArgb(65, 48, 32);
             lblFooterHelp.Location = new Point(65, 688);
             lblFooterHelp.Name = "lblFooterHelp";

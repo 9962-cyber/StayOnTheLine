@@ -78,8 +78,6 @@ namespace StayOnTheLine
         private Rectangle characterBounds;
         private bool characterVisible = false;
 
-        // Font used everywhere (falls back to Georgia if IM Fell isn't installed)
-        private readonly string fontName;
         private readonly string _playerName;
         private readonly StayOnTheLine.Models.OperatorProfile? _profile;
 
@@ -97,7 +95,6 @@ namespace StayOnTheLine
             _playerName = string.IsNullOrWhiteSpace(_profile.OperatorName) ? "OPERATOR" : _profile.OperatorName.Trim();
             InitializeComponent();
 
-            fontName = FontExists("IM FELL DW Pica") ? "IM FELL DW Pica" : "Georgia";
 
             SetupGame();
             ApplyLayout();
@@ -152,11 +149,6 @@ namespace StayOnTheLine
             if (parent == this) this.Click += Form_Click;
         }
 
-        private static bool FontExists(string name)
-        {
-            using (InstalledFontCollection fonts = new InstalledFontCollection())
-                return fonts.Families.Any(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-        }
 
         private Image? LoadAsset(string fileName, Func<Image>? placeholder = null)
         {
@@ -536,7 +528,7 @@ namespace StayOnTheLine
         private void SetFont(Control c, float size)
         {
             Font old = c.Font;
-            c.Font = new Font(fontName, size, FontStyle.Regular, GraphicsUnit.Point);
+            c.Font = StayOnTheLine.Systems.FontManager.GetDialogueFont(size); // IM FELL DW Pica SC
             if (old != null && old != Control.DefaultFont) old.Dispose();
         }
 

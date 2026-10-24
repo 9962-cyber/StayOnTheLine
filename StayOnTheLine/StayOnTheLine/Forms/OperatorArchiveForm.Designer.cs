@@ -81,7 +81,7 @@ namespace StayOnTheLine.Forms
             // lblHeaderSubtitle
             // 
             lblHeaderSubtitle.BackColor = Color.Transparent;
-            lblHeaderSubtitle.Font = new Font("IM FELL DW Pica", 12.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblHeaderSubtitle.Font = new Font("IM FELL DW Pica SC", 12.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblHeaderSubtitle.ForeColor = Color.FromArgb(48, 32, 18);
             lblHeaderSubtitle.Location = new Point(180, 130);
             lblHeaderSubtitle.Name = "lblHeaderSubtitle";
@@ -134,7 +134,7 @@ namespace StayOnTheLine.Forms
             // 
             lblQuote.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblQuote.BackColor = Color.Transparent;
-            lblQuote.Font = new Font("IM FELL DW Pica", 11.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblQuote.Font = new Font("IM FELL DW Pica SC", 11.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblQuote.ForeColor = Color.FromArgb(40, 26, 16);
             lblQuote.Location = new Point(520, 204);
             lblQuote.Name = "lblQuote";

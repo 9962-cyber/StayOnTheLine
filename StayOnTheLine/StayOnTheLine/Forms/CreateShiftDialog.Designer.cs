@@ -93,7 +93,7 @@ namespace StayOnTheLine.Forms
             // lblSubtitle
             // 
             lblSubtitle.BackColor = Color.Transparent;
-            lblSubtitle.Font = new Font("IM FELL DW Pica", 12F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblSubtitle.Font = new Font("IM FELL DW Pica SC", 12F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblSubtitle.ForeColor = Color.FromArgb(45, 28, 16);
             lblSubtitle.Location = new Point(68, 128);
             lblSubtitle.Name = "lblSubtitle";
@@ -144,7 +144,7 @@ namespace StayOnTheLine.Forms
             // 
             lblAdvisory.AutoSize = true;
             lblAdvisory.BackColor = Color.Transparent;
-            lblAdvisory.Font = new Font("IM FELL DW Pica", 9.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblAdvisory.Font = new Font("IM FELL DW Pica SC", 9.5F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblAdvisory.ForeColor = Color.FromArgb(65, 45, 28);
             lblAdvisory.Location = new Point(68, 255);
             lblAdvisory.Name = "lblAdvisory";

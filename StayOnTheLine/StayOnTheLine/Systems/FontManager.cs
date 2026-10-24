@@ -1,4 +1,5 @@
 using System.Drawing.Text;
+using System.Runtime.InteropServices;
 
 namespace StayOnTheLine.Systems
 {
@@ -6,17 +7,23 @@ namespace StayOnTheLine.Systems
     /// OOP Principle: ENCAPSULATION
     /// Encapsulates custom font loading, GDI resources, and font caching
     /// following the Single Responsibility Principle.
+    ///
+    /// The game's type is IM FELL DW Pica SC everywhere. The font files ship in Assets/Fonts and are
+    /// not installed on the player's PC, so they are registered with Windows for this process at
+    /// startup: that lets <c>new Font("IM FELL DW Pica SC", ...)</c> in the designer files, Labels and
+    /// TextRenderer find the real font instead of silently falling back to a system sans-serif.
     /// </summary>
     public static class FontManager
     {
+        public const string FamilyName = "IM FELL DW Pica SC";
+
+        private const uint FR_PRIVATE = 0x10;
+
+        [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
+        private static extern int AddFontResourceEx(string name, uint flags, IntPtr reserved);
+
         private static readonly PrivateFontCollection s_fontCollection = new();
         private static FontFamily? s_imFellSCFamily;
-        private static FontFamily? s_imFellItalicFamily;
-
-        // The Regular and Italic files share one family name, and GDI+ serves the italic face for
-        // every style once both are in a collection, so the upright face gets a collection of its own.
-        private static readonly PrivateFontCollection s_regularCollection = new();
-        private static FontFamily? s_imFellRegularFamily;
         private static bool s_isInitialized = false;
 
         public static bool IsLoaded => s_isInitialized;
@@ -25,6 +32,12 @@ namespace StayOnTheLine.Systems
         {
             InitializeFonts();
         }
+
+        /// <summary>
+        /// Call first thing at startup, before any form creates a font, so every by-name font
+        /// request already sees IM FELL DW Pica SC.
+        /// </summary>
+        public static void EnsureLoaded() { }
 
         private static void InitializeFonts()
         {
@@ -43,37 +56,20 @@ namespace StayOnTheLine.Systems
                         fontsDir = candidate;
                 }
 
+                foreach (string file in new[] { "IMFellDWPicaSC-Regular.ttf", "IMFellDWPica-Regular.ttf", "IMFellDWPica-Italic.ttf" })
+                {
+                    string path = Path.Combine(fontsDir, file);
+                    if (!File.Exists(path)) continue;
+
+                    // Visible to GDI (Labels, TextRenderer) and to by-name lookups, for this process only
+                    try { AddFontResourceEx(path, FR_PRIVATE, IntPtr.Zero); } catch { }
+                }
+
                 string scPath = Path.Combine(fontsDir, "IMFellDWPicaSC-Regular.ttf");
                 if (File.Exists(scPath))
                 {
                     s_fontCollection.AddFontFile(scPath);
-                }
-
-                string italicPath = Path.Combine(fontsDir, "IMFellDWPica-Italic.ttf");
-                if (File.Exists(italicPath))
-                {
-                    s_fontCollection.AddFontFile(italicPath);
-                }
-
-                string regPath = Path.Combine(fontsDir, "IMFellDWPica-Regular.ttf");
-                if (File.Exists(regPath))
-                {
-                    s_fontCollection.AddFontFile(regPath);
-                    s_regularCollection.AddFontFile(regPath);
-                    if (s_regularCollection.Families.Length > 0)
-                        s_imFellRegularFamily = s_regularCollection.Families[0];
-                }
-
-                foreach (var family in s_fontCollection.Families)
-                {
-                    if (family.Name.Contains("SC", StringComparison.OrdinalIgnoreCase))
-                    {
-                        s_imFellSCFamily = family;
-                    }
-                    else if (s_imFellItalicFamily == null)
-                    {
-                        s_imFellItalicFamily = family;
-                    }
+                    s_imFellSCFamily = s_fontCollection.Families.FirstOrDefault(f => f.Name.Contains("SC", StringComparison.OrdinalIgnoreCase));
                 }
             }
             catch
@@ -92,30 +88,19 @@ namespace StayOnTheLine.Systems
                 try { return new Font(s_imFellSCFamily, size, style, GraphicsUnit.Point); } catch { }
             }
 
-            try
-            {
-                return new Font("IM FELL DW Pica SC", size, style, GraphicsUnit.Point);
-            }
-            catch
-            {
-                return new Font("Georgia", size, style, GraphicsUnit.Point);
-            }
-        }
-
-        /// <summary>
-        /// Retrieves upright IM FELL DW Pica, falling back to Georgia, then the generic serif.
-        /// </summary>
-        public static Font GetRegularFont(float size, FontStyle style = FontStyle.Regular)
-        {
-            if (s_imFellRegularFamily != null)
-            {
-                try { return new Font(s_imFellRegularFamily, size, style, GraphicsUnit.Point); } catch { }
-            }
-
-            return TryCreateInstalled("IM FELL DW Pica", size, style)
+            return TryCreateInstalled(FamilyName, size, style)
                 ?? TryCreateInstalled("Georgia", size, style)
                 ?? new Font(FontFamily.GenericSerif, size, style, GraphicsUnit.Point);
         }
+
+        /// <summary>Spoken and written dialogue: upright IM FELL DW Pica SC.</summary>
+        public static Font GetDialogueFont(float size) => GetSmallCapsFont(size);
+
+        /// <summary>Body text. The whole game uses IM FELL DW Pica SC.</summary>
+        public static Font GetRegularFont(float size, FontStyle style = FontStyle.Regular) => GetSmallCapsFont(size, style);
+
+        /// <summary>Emphasis (taglines, stage directions): IM FELL DW Pica SC, slanted.</summary>
+        public static Font GetItalicFont(float size) => GetSmallCapsFont(size, FontStyle.Italic);
 
         /// <summary>
         /// Terminal / system text: Consolas, falling back to the generic monospace font.
@@ -138,26 +123,6 @@ namespace StayOnTheLine.Systems
             }
             catch { }
             return null;
-        }
-
-        /// <summary>
-        /// Retrieves the IM FELL DW Pica Italic font with fallback.
-        /// </summary>
-        public static Font GetItalicFont(float size)
-        {
-            if (s_imFellItalicFamily != null)
-            {
-                try { return new Font(s_imFellItalicFamily, size, FontStyle.Italic, GraphicsUnit.Point); } catch { }
-            }
-
-            try
-            {
-                return new Font("IM FELL DW Pica", size, FontStyle.Italic, GraphicsUnit.Point);
-            }
-            catch
-            {
-                return new Font("Georgia", size, FontStyle.Italic, GraphicsUnit.Point);
-            }
         }
     }
 }

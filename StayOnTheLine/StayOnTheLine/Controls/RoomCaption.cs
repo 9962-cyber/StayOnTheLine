@@ -85,7 +85,7 @@ namespace StayOnTheLine.Controls
                 top += 34f * s;
             }
 
-            using var body = FontManager.GetItalicFont((narration ? 14.5f : 16f) * s);
+            using var body = narration ? FontManager.GetItalicFont(14.5f * s) : FontManager.GetDialogueFont(16f * s);
             using var ink = new SolidBrush(narration ? Color.FromArgb(190, 190, 186) : Color.White);
             string shown = _text.Substring(0, Math.Min(_typed, _text.Length));
             g.DrawString(shown, body, ink, new RectangleF(pad, top, W - pad * 2 - 24f * s, H - top - pad));

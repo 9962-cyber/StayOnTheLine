@@ -169,7 +169,7 @@ namespace StayOnTheLine.Controls
             }
 
             float bodySize = _current.Text.Length > 140 ? 15f : 17.5f;
-            using var fontBody = FontManager.GetItalicFont(bodySize * s);
+            using var fontBody = FontManager.GetDialogueFont(bodySize * s);
             int bodyTop = _current.Speaker.Length > 0 ? pad + (int)(40 * s) : pad + (int)(8 * s);
             string shown = _current.Text.Substring(0, Math.Min(_typedChars, _current.Text.Length));
             TextRenderer.DrawText(g, shown, fontBody,
@@ -259,7 +259,7 @@ namespace StayOnTheLine.Controls
             }
 
             float bodySize = _current.Text.Length > 120 ? 17.5f : 22f;
-            using var fontBody = FontManager.GetItalicFont(bodySize * s);
+            using var fontBody = FontManager.GetDialogueFont(bodySize * s);
             int bodyTop = rc.Y + (_current.Speaker.Length > 0 ? (int)(70 * s) : (int)(36 * s));
             string shown = _current.Text.Substring(0, Math.Min(_typedChars, _current.Text.Length));
             TextRenderer.DrawText(g, shown, fontBody,

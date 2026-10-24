@@ -379,19 +379,19 @@ namespace StayOnTheLine
             int headerY = (int)(75 * scaleY);
 
             lblHeaderLeft.Location = new Point(marginX, headerY);
-            lblHeaderLeft.Font = new Font("IM FELL DW Pica", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
+            lblHeaderLeft.Font = new Font("IM FELL DW Pica SC", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
 
-            lblHeaderRight.Font = new Font("IM FELL DW Pica", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
+            lblHeaderRight.Font = new Font("IM FELL DW Pica SC", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
             lblHeaderRight.Width = (int)(400 * scaleX);
             lblHeaderRight.Location = new Point(ClientSize.Width - marginX - lblHeaderRight.Width, headerY);
 
             // 2. Footer controls
             int footerY = ClientSize.Height - (int)(75 * scaleY);
 
-            lblFooterLeft.Font = new Font("IM FELL DW Pica", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
+            lblFooterLeft.Font = new Font("IM FELL DW Pica SC", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
             lblFooterLeft.Location = new Point(marginX, footerY);
 
-            lblFooterRight.Font = new Font("IM FELL DW Pica", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
+            lblFooterRight.Font = new Font("IM FELL DW Pica SC", Math.Max(7.5f, 9f * fontScale), FontStyle.Regular);
             lblFooterRight.Width = (int)(400 * scaleX);
             lblFooterRight.Location = new Point(ClientSize.Width - marginX - lblFooterRight.Width, footerY);
 
@@ -399,7 +399,7 @@ namespace StayOnTheLine
             int blockX = (int)(180 * scaleX);
 
             // Kicker ("A NIGHT DISPATCH STORY")
-            lblKicker.Font = new Font("IM FELL DW Pica", Math.Max(8f, 10f * fontScale), FontStyle.Regular);
+            lblKicker.Font = new Font("IM FELL DW Pica SC", Math.Max(8f, 10f * fontScale), FontStyle.Regular);
             lblKicker.Location = new Point(blockX, (int)(130 * scaleY));
 
             // Title 1 ("Stay On")
@@ -411,12 +411,12 @@ namespace StayOnTheLine
             lblTitle2.Location = new Point(blockX + (int)(15 * scaleX), lblTitle1.Bottom - (int)(15 * scaleY));
 
             // Tagline ("“There are eight calls on tonight’s list.”")
-            lblTagline.Font = new Font("IM FELL DW Pica", Math.Max(10f, 16f * fontScale), FontStyle.Italic);
+            lblTagline.Font = new Font("IM FELL DW Pica SC", Math.Max(10f, 16f * fontScale), FontStyle.Italic);
             lblTagline.Location = new Point(blockX, lblTitle2.Bottom + (int)(15 * scaleY));
 
             // Menu Items: New shift, Continue, Quit
             float menuFontSize = Math.Max(16f, 28f * fontScale);
-            Font menuFont = new Font("IM FELL DW Pica", menuFontSize, FontStyle.Regular);
+            Font menuFont = new Font("IM FELL DW Pica SC", menuFontSize, FontStyle.Regular);
 
             int menuSpacing = (int)(18 * scaleY);
             int menuStartY = lblTagline.Bottom + (int)(32 * scaleY);

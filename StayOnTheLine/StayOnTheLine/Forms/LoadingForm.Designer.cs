@@ -71,7 +71,7 @@ namespace StayOnTheLine
             // lblTitleTheLine
             // 
             lblTitleTheLine.BackColor = Color.Transparent;
-            lblTitleTheLine.Font = new Font("IM FELL DW Pica", 56F, FontStyle.Italic, GraphicsUnit.Point, 0);
+            lblTitleTheLine.Font = new Font("IM FELL DW Pica SC", 56F, FontStyle.Italic, GraphicsUnit.Point, 0);
             lblTitleTheLine.ForeColor = Color.FromArgb(230, 227, 218);
             lblTitleTheLine.Location = new Point(560, 380);
             lblTitleTheLine.Name = "lblTitleTheLine";

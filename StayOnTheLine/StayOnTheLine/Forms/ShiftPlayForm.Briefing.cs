@@ -13,17 +13,19 @@ namespace StayOnTheLine.Forms
     /// Before every shift: the scenario's optional opening scene in the room, then the Shift Briefing
     /// book (operator, units, expected calls, procedure, a margin note) that the player closes with
     /// CLOCK IN. Contents come from <see cref="IShiftScenario.Briefing"/>, so each shift brings its own.
+    /// Everything on the pages is set in IM FELL DW Pica SC.
     /// </summary>
     public partial class ShiftPlayForm
     {
         private Panel? _pnlShiftBook;
-        private Label? _btnClockIn;
+        private Rectangle _clockInRect;
+        private bool _clockInHovered;
         private readonly Dictionary<string, Image?> _sceneSprites = new();
 
-        private static readonly Color BookInk = Color.FromArgb(40, 30, 22);
-        private static readonly Color BookMuted = Color.FromArgb(110, 92, 70);
-        private static readonly Color BookRule = Color.FromArgb(90, 120, 100, 80);
-        private static readonly Color BookNote = Color.FromArgb(150, 36, 30);
+        private static readonly Color BookInk = Color.FromArgb(38, 28, 20);
+        private static readonly Color BookMuted = Color.FromArgb(112, 94, 72);
+        private static readonly Color BookRule = Color.FromArgb(70, 120, 100, 80);
+        private static readonly Color BookNote = Color.FromArgb(148, 34, 28);
 
         /// <summary>True while the briefing book is up; calls don't ring until the player clocks in.</summary>
         private bool ShiftBookOpen => _pnlShiftBook != null;
@@ -82,39 +84,26 @@ namespace StayOnTheLine.Forms
             AudioManager.Instance.PlayPaperRustle();
             AudioManager.Instance.StopPhoneRing();
 
-            _pnlShiftBook = new Panel { Bounds = ClientRectangle, BackColor = Color.FromArgb(20, 10, 8) };
+            _pnlShiftBook = new Panel { Bounds = ClientRectangle, BackColor = Color.FromArgb(8, 6, 5) };
             EnableDoubleBuffering(_pnlShiftBook);
             _pnlShiftBook.Paint += PaintShiftBook;
 
-            _btnClockIn = new Label
+            // CLOCK IN is drawn on the page itself (an inked box), so it is hit-tested here
+            _pnlShiftBook.MouseMove += (s, e) =>
             {
-                Text = "[ CLOCK IN ]",
-                ForeColor = BookInk,
-                BackColor = Color.FromArgb(232, 220, 192),
-                BorderStyle = BorderStyle.FixedSingle,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Cursor = Cursors.Hand
+                bool over = _clockInRect.Contains(e.Location);
+                if (over == _clockInHovered) return;
+                _clockInHovered = over;
+                _pnlShiftBook.Cursor = over ? Cursors.Hand : Cursors.Default;
+                if (over) AudioManager.Instance.PlayKeyClick();
+                _pnlShiftBook.Invalidate(Rectangle.Inflate(_clockInRect, 6, 6));
             };
-            _btnClockIn.MouseEnter += (s, e) =>
-            {
-                _btnClockIn.BackColor = Color.FromArgb(48, 36, 26);
-                _btnClockIn.ForeColor = Color.FromArgb(245, 235, 215);
-                AudioManager.Instance.PlayKeyClick();
-            };
-            _btnClockIn.MouseLeave += (s, e) =>
-            {
-                _btnClockIn.BackColor = Color.FromArgb(232, 220, 192);
-                _btnClockIn.ForeColor = BookInk;
-            };
-            _btnClockIn.Click += (s, e) => ClockIn();
-
-            _pnlShiftBook.Controls.Add(_btnClockIn);
-            _pnlShiftBook.Resize += (s, e) => LayoutShiftBook();
+            _pnlShiftBook.MouseClick += (s, e) => { if (_clockInRect.Contains(e.Location)) ClockIn(); };
+            _pnlShiftBook.Resize += (s, e) => _pnlShiftBook.Invalidate();
             Resize += (s, e) => { if (_pnlShiftBook != null) _pnlShiftBook.Bounds = ClientRectangle; };
 
             Controls.Add(_pnlShiftBook);
             ApplyResponsiveLayout(); // keeps the book above the desk controls
-            LayoutShiftBook();
         }
 
         private void ClockIn()
@@ -124,7 +113,7 @@ namespace StayOnTheLine.Forms
             Controls.Remove(_pnlShiftBook);
             _pnlShiftBook.Dispose();
             _pnlShiftBook = null;
-            _btnClockIn = null;
+            _clockInHovered = false;
 
             if (Scenario.ShiftNumber == 3)
                 _lblSupervisorBar.Text = "SYSTEM: RECORDS TERMINAL: 1 UNREAD MESSAGE.";
@@ -138,19 +127,9 @@ namespace StayOnTheLine.Forms
             var rc = _pnlShiftBook!.ClientRectangle;
             var book = _imgShiftBriefingBook != null ? GetContainFitRect(_imgShiftBriefingBook, rc) : rc;
             float s = book.Width / 1920f;
-            var left = new Rectangle(book.X + (int)(390 * s), book.Y + (int)(110 * s), (int)(580 * s), (int)(860 * s));
-            var right = new Rectangle(book.X + (int)(1060 * s), book.Y + (int)(110 * s), (int)(580 * s), (int)(860 * s));
+            var left = new Rectangle(book.X + (int)(395 * s), book.Y + (int)(115 * s), (int)(565 * s), (int)(860 * s));
+            var right = new Rectangle(book.X + (int)(1070 * s), book.Y + (int)(115 * s), (int)(570 * s), (int)(860 * s));
             return (book, left, right, s);
-        }
-
-        private void LayoutShiftBook()
-        {
-            if (_pnlShiftBook == null || _btnClockIn == null || _pnlShiftBook.Width <= 0) return;
-            var (_, _, right, s) = ShiftBookGeometry();
-            _btnClockIn.Font = FontManager.GetSmallCapsFont(Math.Max(8f, 15f * s), FontStyle.Bold);
-            int w = (int)(200 * s), h = (int)(54 * s);
-            _btnClockIn.Bounds = new Rectangle(right.Right - w - (int)(20 * s), right.Bottom - h - (int)(30 * s), w, h);
-            _pnlShiftBook.Invalidate();
         }
 
         private void PaintShiftBook(object? sender, PaintEventArgs e)
@@ -162,10 +141,13 @@ namespace StayOnTheLine.Forms
             var rc = _pnlShiftBook!.ClientRectangle;
             if (rc.Width <= 0 || rc.Height <= 0) return;
 
+            // The desk, dimmed, with the open book lying on it
             if (_imgDeskRoom != null) DrawImageCoverFit(g, _imgDeskRoom, rc);
-            using (var wash = new SolidBrush(Color.FromArgb(170, 4, 8, 4))) g.FillRectangle(wash, rc);
+            using (var wash = new SolidBrush(Color.FromArgb(200, 4, 6, 4))) g.FillRectangle(wash, rc);
 
             var (book, left, right, s) = ShiftBookGeometry();
+            using (var shadow = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
+                g.FillRectangle(shadow, book.X + book.Width * 0.15f, book.Y + book.Height * 0.08f + 14 * s, book.Width * 0.72f, book.Height * 0.86f);
             if (_imgShiftBriefingBook != null) g.DrawImage(_imgShiftBriefingBook, book);
 
             var briefing = Scenario.Briefing;
@@ -173,82 +155,84 @@ namespace StayOnTheLine.Forms
 
             using var ink = new SolidBrush(BookInk);
             using var muted = new SolidBrush(BookMuted);
-            using var rule = new Pen(BookRule, Math.Max(1f, 1.5f * s));
+            using var rule = new Pen(BookRule, Math.Max(1f, 1.2f * s));
+            using var tagFont = FontManager.GetSmallCapsFont(9.5f * s);
+            using var titleFont = FontManager.GetSmallCapsFont(36f * s);
 
             // ── Left page: who is on shift tonight ──
-            using (var tag = FontManager.GetSmallCapsFont(9f * s))
-                g.DrawString("MUNICIPAL EMERGENCY SERVICES · FORM 08", tag, muted, left.X, left.Y);
-            using (var title = FontManager.GetRegularFont(34f * s))
-                g.DrawString("Shift Briefing", title, ink, left.X, left.Y + 34 * s);
+            g.DrawString("MUNICIPAL EMERGENCY SERVICES · FORM 08", tagFont, muted, left.X, left.Y);
+            g.DrawString("Shift Briefing", titleFont, ink, left.X - 4 * s, left.Y + 30 * s);
 
-            var photo = new RectangleF(left.X, left.Y + 140 * s, 150 * s, 150 * s);
-            using (var photoFill = new SolidBrush(Color.FromArgb(28, 64, 50))) g.FillRectangle(photoFill, photo);
-            using (var photoFont = FontManager.GetSmallCapsFont(13f * s))
-            using (var photoSmall = FontManager.GetSmallCapsFont(8f * s))
-            using (var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-            using (var light = new SolidBrush(Color.FromArgb(200, 220, 205)))
-            {
-                g.DrawString("04", photoFont, light, new RectangleF(photo.X, photo.Y, photo.Width, photo.Height * 0.85f), center);
-                g.DrawString("NO IMAGE", photoSmall, light, new RectangleF(photo.X, photo.Y + photo.Height * 0.3f, photo.Width, photo.Height * 0.85f), center);
-            }
+            float y = left.Y + 190 * s;
+            float valueX = left.X + 175 * s;
+            g.DrawString("DISPATCHER 04", tagFont, muted, valueX, y);
+            using (var nameFont = FontManager.GetSmallCapsFont(30f * s))
+                g.DrawString(Profile.OperatorName, nameFont, ink, new RectangleF(valueX - 4 * s, y + 22 * s, left.Right - valueX, 56 * s));
+            using (var roleFont = FontManager.GetSmallCapsFont(10f * s))
+                g.DrawString("Probationary operator", roleFont, muted, valueX, y + 82 * s);
 
-            float infoX = photo.Right + 22 * s;
-            using (var tag = FontManager.GetSmallCapsFont(9f * s))
-                g.DrawString("DISPATCHER 04", tag, muted, infoX, photo.Y + 6 * s);
-            using (var name = FontManager.GetRegularFont(26f * s))
-                g.DrawString(Profile.OperatorName, name, ink, new RectangleF(infoX, photo.Y + 30 * s, left.Right - infoX, 60 * s));
-            using (var role = FontManager.GetItalicFont(11f * s))
-                g.DrawString("Probationary operator", role, muted, infoX, photo.Y + 92 * s);
-
-            float rowY = photo.Bottom + 60 * s;
+            y += 175 * s;
             var rows = new[]
             {
                 ("SHIFT", $"{briefing.ShiftLabel} / {briefing.Hours}"),
                 ("UNITS", $"{Scenario.InitialUnits:D2} available"),
                 ("EXPECTED", $"{expectedCalls:D2} calls")
             };
-            using (var label = FontManager.GetSmallCapsFont(9f * s))
-            using (var value = FontManager.GetRegularFont(17f * s))
+            using (var valueFont = FontManager.GetSmallCapsFont(19f * s))
             {
                 foreach (var (key, val) in rows)
                 {
-                    g.DrawString(key, label, muted, left.X, rowY + 10 * s);
-                    g.DrawString(val, value, ink, left.X + 150 * s, rowY);
-                    g.DrawLine(rule, left.X, rowY + 46 * s, left.Right, rowY + 46 * s);
-                    rowY += 66 * s;
+                    g.DrawString(key, tagFont, muted, left.X, y + 12 * s);
+                    g.DrawString(val, valueFont, ink, valueX, y);
+                    g.DrawLine(rule, left.X, y + 50 * s, left.Right - 10 * s, y + 50 * s);
+                    y += 74 * s;
                 }
             }
 
-            // ── Right page: tonight's procedure and a margin note ──
-            using (var tag = FontManager.GetSmallCapsFont(9f * s))
-                g.DrawString($"SUPERVISOR MEMO / {Scenario.SupervisorName}", tag, muted, right.X, right.Y);
-            using (var title = FontManager.GetRegularFont(34f * s))
-                g.DrawString("Procedure", title, ink, right.X, right.Y + 34 * s);
+            // ── Right page: tonight's procedure ──
+            g.DrawString($"SUPERVISOR MEMO / {Scenario.SupervisorName}", tagFont, muted, right.X, right.Y);
+            g.DrawString("Procedure", titleFont, ink, right.X - 4 * s, right.Y + 30 * s);
 
-            float stepY = right.Y + 140 * s;
-            using (var num = FontManager.GetSmallCapsFont(9f * s))
-            using (var step = FontManager.GetSmallCapsFont(14f * s))
+            float stepY = right.Y + 150 * s;
+            using (var stepFont = FontManager.GetSmallCapsFont(15.5f * s))
             {
                 for (int i = 0; i < briefing.Procedure.Count; i++)
                 {
-                    g.DrawString((i + 1).ToString("D2"), num, muted, right.X, stepY + 6 * s);
-                    var box = new RectangleF(right.X + 60 * s, stepY, right.Width - 60 * s, 90 * s);
-                    g.DrawString(briefing.Procedure[i], step, ink, box);
-                    float used = g.MeasureString(briefing.Procedure[i], step, (int)box.Width).Height;
-                    stepY += Math.Max(56 * s, used + 22 * s);
+                    g.DrawString((i + 1).ToString("D2"), tagFont, muted, right.X, stepY + 6 * s);
+                    var box = new RectangleF(right.X + 58 * s, stepY, right.Width - 58 * s, 96 * s);
+                    g.DrawString(briefing.Procedure[i], stepFont, ink, box);
+                    float used = g.MeasureString(briefing.Procedure[i], stepFont, (int)box.Width).Height;
+                    stepY += Math.Max(58 * s, used + 24 * s);
                 }
             }
 
-            // Handwritten note in the margin, slightly tilted
-            using (var note = FontManager.GetItalicFont(15f * s))
+            // Handwritten margin note, in red, tilted like it was scribbled in a hurry
+            using (var noteFont = FontManager.GetSmallCapsFont(16.5f * s))
             using (var noteBrush = new SolidBrush(BookNote))
             {
-                var noteBox = new RectangleF(right.X + 10 * s, stepY + 30 * s, right.Width - 20 * s, 170 * s);
+                var noteBox = new RectangleF(right.X + 20 * s, Math.Max(stepY + 34 * s, right.Y + 470 * s), right.Width - 50 * s, 220 * s);
                 var state = g.Save();
                 g.TranslateTransform(noteBox.X, noteBox.Y);
-                g.RotateTransform(-3f);
-                g.DrawString(briefing.Note, note, noteBrush, new RectangleF(0, 0, noteBox.Width, noteBox.Height));
+                g.RotateTransform(-5f);
+                g.DrawString(briefing.Note, noteFont, noteBrush, new RectangleF(0, 0, noteBox.Width, noteBox.Height));
                 g.Restore(state);
+            }
+
+            // [ CLOCK IN ] inked in the bottom corner of the right page
+            using (var clockFont = FontManager.GetSmallCapsFont(15f * s))
+            {
+                const string label = "[ CLOCK IN ]";
+                SizeF size = g.MeasureString(label, clockFont);
+                int w = (int)(size.Width + 46 * s), h = (int)(size.Height + 22 * s);
+                _clockInRect = new Rectangle(right.Right - w - (int)(18 * s), right.Bottom - h - (int)(24 * s), w, h);
+
+                if (_clockInHovered)
+                    using (var fill = new SolidBrush(Color.FromArgb(225, 38, 28, 20))) g.FillRectangle(fill, _clockInRect);
+                using (var border = new Pen(Color.FromArgb(_clockInHovered ? 240 : 170, BookInk), Math.Max(1f, 1.4f * s)))
+                    g.DrawRectangle(border, _clockInRect);
+                using var labelBrush = new SolidBrush(_clockInHovered ? Color.FromArgb(240, 230, 210) : BookInk);
+                using var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(label, clockFont, labelBrush, _clockInRect, center);
             }
         }
     }

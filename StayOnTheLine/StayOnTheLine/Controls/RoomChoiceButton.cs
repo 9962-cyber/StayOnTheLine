@@ -9,7 +9,7 @@ namespace StayOnTheLine.Controls
     /// <summary>
     /// OOP Principle: ENCAPSULATION
     /// A spoken-response choice shown under a character's dialogue box in the room: a dark box with
-    /// a thin light border and typewriter text, lighter while hovered. Not focusable, so the number
+    /// a thin light border and IM FELL DW Pica SC text, lighter while hovered. Not focusable, so the number
     /// keys stay with the scene form.
     /// </summary>
     public sealed class RoomChoiceButton : Control
@@ -48,7 +48,7 @@ namespace StayOnTheLine.Controls
 
             // Sized so a full option ("Say you're checking an unusual record.") fits on two lines
             float size = Math.Clamp(H / 6.4f, 7f, 14f);
-            using var font = FontManager.GetMonospaceFont(size);
+            using var font = FontManager.GetDialogueFont(size);
             using var format = new StringFormat
             {
                 Alignment = StringAlignment.Center,
