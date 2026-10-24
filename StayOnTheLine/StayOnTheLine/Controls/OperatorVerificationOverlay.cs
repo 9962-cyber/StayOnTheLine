@@ -91,16 +91,18 @@ namespace StayOnTheLine.Controls
                 g.FillRectangle(pgb, 0, 0, w, h);
             }
 
-            // 2. Centered 1996 CRT Dispatch Terminal Card
-            float s = Math.Max(0.7f, Math.Min(w / 1920f, h / 1080f));
-            int cardW = (int)(680 * s);
-            int cardH = (int)(380 * s);
+            // 2. Centered 1996 CRT Dispatch Terminal Card (proportionally fitted, zero dead space)
+            float s = Math.Max(0.75f, Math.Min(w / 1920f, h / 1080f));
+            int cardW = Math.Max(740, (int)(780 * s));
+            int cardH = (int)(292 * s);
+            if (cardW > w - 40) cardW = w - 40;
+            if (cardH > h - 40) cardH = h - 40;
             int cardX = (w - cardW) / 2;
             int cardY = (h - cardH) / 2;
             Rectangle cardRect = new Rectangle(cardX, cardY, cardW, cardH);
 
             // Card body background (dark analog CRT green-black)
-            using (var brush = new SolidBrush(Color.FromArgb(235, 12, 18, 14)))
+            using (var brush = new SolidBrush(Color.FromArgb(240, 10, 16, 12)))
                 g.FillRectangle(brush, cardRect);
 
             // Double border: outer green/amber phosphor, inner subtle line
@@ -112,30 +114,36 @@ namespace StayOnTheLine.Controls
             }
 
             // 3. Header bar
-            int headerH = (int)(56 * s);
+            int headerH = (int)(54 * s);
             Rectangle headerRect = new Rectangle(cardX + 7, cardY + 7, cardW - 14, headerH);
             using (var hBrush = new SolidBrush(Color.FromArgb(60, 140, 200, 160)))
                 g.FillRectangle(hBrush, headerRect);
 
-            using (Font hFont = FontManager.GetSmallCapsFont(Math.Max(12f, 17f * s), FontStyle.Bold))
-            using (Font titleFont = FontManager.GetSmallCapsFont(Math.Max(11f, 15f * s)))
-            using (Font codeFont = new Font("Consolas", Math.Max(10f, 13f * s), FontStyle.Regular, GraphicsUnit.Point))
+            using (Font hFont = FontManager.GetSmallCapsFont(Math.Max(11f, 15f * s), FontStyle.Bold))
+            using (Font titleFont = FontManager.GetSmallCapsFont(Math.Max(10f, 13f * s)))
+            using (Font codeFont = new Font("Consolas", Math.Max(9f, 11f * s), FontStyle.Regular, GraphicsUnit.Point))
             using (Brush textWhite = new SolidBrush(Color.FromArgb(240, 248, 242)))
             using (Brush textDim = new SolidBrush(Color.FromArgb(160, 195, 175)))
             using (Brush greenGlow = new SolidBrush(Color.FromArgb(90, 220, 150)))
             {
                 // Header Title
                 string headerTitle = "DISPATCH LINE CONNECTED";
-                g.DrawString(headerTitle, hFont, textWhite, cardX + (int)(24 * s), cardY + (int)(16 * s));
+                g.DrawString(headerTitle, hFont, textWhite, cardX + (int)(20 * s), cardY + (int)(16 * s));
 
-                string headerSub = "TERMINAL 04 — NIGHT WATCH";
+                // Right tag: Short and clean to guarantee NO text collision
+                string headerSub = "TERMINAL 04";
                 var subSize = g.MeasureString(headerSub, codeFont);
-                g.DrawString(headerSub, codeFont, textDim, cardX + cardW - subSize.Width - (int)(20 * s), cardY + (int)(20 * s));
+                int subX = cardX + cardW - (int)subSize.Width - (int)(20 * s);
+                var titleSize = g.MeasureString(headerTitle, hFont);
+                if (subX > cardX + (int)(20 * s) + titleSize.Width + 24)
+                {
+                    g.DrawString(headerSub, codeFont, textDim, subX, cardY + (int)(18 * s));
+                }
 
                 // 4. Card Details (Operator Verification Lines)
-                int bodyY = cardY + headerH + (int)(24 * s);
-                int padX = cardX + (int)(32 * s);
-                int lineGap = (int)(34 * s);
+                int bodyY = cardY + headerH + (int)(22 * s);
+                int padX = cardX + (int)(28 * s);
+                int lineGap = (int)(32 * s);
 
                 DrawInfoLine(g, "OPERATOR VERIFIED", _profile.OperatorName.ToUpperInvariant(), padX, bodyY, titleFont, textDim, textWhite, s);
                 DrawInfoLine(g, "CLEARANCE LEVEL", "LEVEL 1 (PROVISIONAL DISPATCHER)", padX, bodyY + lineGap, titleFont, textDim, greenGlow, s);
@@ -143,19 +151,22 @@ namespace StayOnTheLine.Controls
                 DrawInfoLine(g, "CALLS LOGGED", _profile.CallsLogged.ToString(), padX, bodyY + lineGap * 3, titleFont, textDim, textWhite, s);
 
                 // Divider line
-                int divY = bodyY + lineGap * 4 + (int)(8 * s);
+                int divY = bodyY + lineGap * 4 + (int)(12 * s);
                 using (var divPen = new Pen(Color.FromArgb(70, 140, 200, 160), 1f))
-                    g.DrawLine(divPen, padX, divY, cardX + cardW - (int)(32 * s), divY);
+                    g.DrawLine(divPen, padX, divY, cardX + cardW - (int)(28 * s), divY);
 
                 // Bottom Callout
                 string commMsg = "[ COMMENCING NIGHT DISPATCH SHIFT... ]";
-                g.DrawString(commMsg, hFont, greenGlow, padX, divY + (int)(14 * s));
+                using (Font commFont = FontManager.GetSmallCapsFont(Math.Max(10f, 13f * s), FontStyle.Bold))
+                {
+                    g.DrawString(commMsg, commFont, greenGlow, padX, divY + (int)(12 * s));
+                }
 
                 string promptMsg = "[ CLICK ANYWHERE OR PRESS ENTER TO COMMENCE ]";
-                using (Font promptFont = FontManager.GetItalicFont(Math.Max(9f, 11f * s)))
+                using (Font promptFont = FontManager.GetItalicFont(Math.Max(8.5f, 10f * s)))
                 using (Brush promptBrush = new SolidBrush(Color.FromArgb(120, 160, 140)))
                 {
-                    g.DrawString(promptMsg, promptFont, promptBrush, padX, divY + (int)(44 * s));
+                    g.DrawString(promptMsg, promptFont, promptBrush, padX, divY + (int)(36 * s));
                 }
             }
 
@@ -176,7 +187,7 @@ namespace StayOnTheLine.Controls
                 }
 
                 // CRT Horizontal Glitch Beam during peak flicker
-                if (_flickerOpacity > 0.4f)
+                if (_flickerOpacity > 0.4f && _flickerOpacity < 0.99f)
                 {
                     int beamY = (int)((Math.Sin(_flickerTick * 1.5) * 0.5 + 0.5) * h);
                     using var beamBrush = new SolidBrush(Color.FromArgb((int)(alpha * 0.6f), 120, 255, 180));
@@ -187,7 +198,7 @@ namespace StayOnTheLine.Controls
 
         private static void DrawInfoLine(Graphics g, string label, string value, int x, int y, Font font, Brush labelBrush, Brush valBrush, float s)
         {
-            string fullLabel = label.PadRight(18) + ": ";
+            string fullLabel = label.PadRight(19) + ": ";
             g.DrawString(fullLabel, font, labelBrush, x, y);
             var labelSize = g.MeasureString(fullLabel, font);
             g.DrawString(value, font, valBrush, x + labelSize.Width, y);
@@ -199,8 +210,8 @@ namespace StayOnTheLine.Controls
 
             if (!_isFlickering)
             {
-                // Card is resting on screen. After ~20 ticks (approx 1.5s), initiate flicker
-                if (_step > 20)
+                // Card rests on screen. After ~18 ticks (approx 1.3s), initiate flicker
+                if (_step > 18)
                 {
                     TriggerFlicker();
                 }
@@ -245,7 +256,9 @@ namespace StayOnTheLine.Controls
             if (_completed) return;
             _completed = true;
             _stateTimer.Stop();
-            _stateTimer.Dispose();
+            _flickerOpacity = 1.0f; // Screen stays solidly black
+            Invalidate();
+            Update();
 
             VerificationCompleted?.Invoke();
         }

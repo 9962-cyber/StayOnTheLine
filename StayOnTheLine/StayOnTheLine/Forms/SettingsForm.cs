@@ -82,6 +82,14 @@ namespace StayOnTheLine.Forms
         /// Adds an "EXIT TO MAIN MENU" button; clicking it returns DialogResult.Abort
         /// so the caller knows to close itself as well.
         /// </summary>
+        /// <summary>
+        /// Optional operator profile reference passed when opened during active shift gameplay.
+        /// When saving progress on exit, this profile is committed to the station archives.
+        /// </summary>
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public OperatorProfile? CurrentProfile { get; set; }
+
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool ShowExitButton
@@ -1068,23 +1076,23 @@ namespace StayOnTheLine.Forms
                 return; // already built
             }
 
-            // Position it to the left of DISCARD, matching same height
+            // Position it to the left of DISCARD (740), matching same height
             btnExit = new Label
             {
                 BackColor = Color.FromArgb(214, 202, 178),
                 Cursor    = Cursors.Hand,
                 Font      = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(40, 25, 12),
-                Location  = new Point(555, 676),   // left of DISCARD (740)
+                Location  = new Point(520, 676),
                 Name      = "btnExit",
-                Size      = new Size(165, 48),
+                Size      = new Size(200, 48),
                 TabIndex  = 11,
                 Text      = string.Empty,
                 TextAlign = ContentAlignment.MiddleCenter,
                 UseMnemonic = false
             };
 
-            // Paint – same parchment-tan style as DISCARD
+            // Paint – parchment-tan style with red/amber contrasting border
             btnExit.Paint += (s, e) =>
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -1093,15 +1101,15 @@ namespace StayOnTheLine.Forms
 
                 bool isHovered = btnExit.ClientRectangle.Contains(btnExit.PointToClient(Cursor.Position));
                 Color bgColor = isHovered
-                    ? Color.FromArgb(228, 218, 196)
+                    ? Color.FromArgb(235, 222, 200)
                     : Color.FromArgb(214, 202, 178);
 
                 using (var bgBrush = new SolidBrush(bgColor))
                     e.Graphics.FillPath(bgBrush, path);
 
                 using (var borderPen = new Pen(isHovered
-                    ? Color.FromArgb(160, 65, 45)
-                    : Color.FromArgb(135, 105, 75), 1.5f))
+                    ? Color.FromArgb(180, 50, 30)
+                    : Color.FromArgb(145, 95, 65), 1.5f))
                     e.Graphics.DrawPath(borderPen, path);
 
                 var innerRect = new Rectangle(2, 2, btnExit.Width - 5, btnExit.Height - 5);
@@ -1109,7 +1117,7 @@ namespace StayOnTheLine.Forms
                 using (var innerPen = new Pen(Color.FromArgb(90, 255, 255, 255), 1f))
                     e.Graphics.DrawPath(innerPen, innerPath);
 
-                Color textColor = isHovered ? Color.FromArgb(160, 45, 30) : Color.FromArgb(42, 28, 16);
+                Color textColor = isHovered ? Color.FromArgb(175, 40, 25) : Color.FromArgb(42, 28, 16);
                 TextRenderer.DrawText(
                     e.Graphics,
                     "EXIT TO MAIN MENU",
@@ -1123,12 +1131,10 @@ namespace StayOnTheLine.Forms
             btnExit.MouseEnter += (s, e) =>
             {
                 AudioManager.Instance.PlayFrequencyBlip();
-                btnExit.ForeColor = Color.FromArgb(160, 45, 30);
                 btnExit.Invalidate();
             };
             btnExit.MouseLeave += (s, e) =>
             {
-                btnExit.ForeColor = Color.FromArgb(42, 28, 16);
                 btnExit.Invalidate();
             };
 
@@ -1143,14 +1149,14 @@ namespace StayOnTheLine.Forms
         }
 
         // ------------------------------------------------------------------
-        //  EXIT CONFIRMATION OVERLAY (Darkened settings background + Save/Yes/No)
+        //  EXIT CONFIRMATION OVERLAY (Darkened screen + Save & Return / Discard / Resume)
         // ------------------------------------------------------------------
-        private Panel pnlConfirmOverlay;
-        private Label lblConfirmTitle;
-        private Label lblConfirmSub;
-        private Label btnConfirmSave;
-        private Label btnConfirmYes;
-        private Label btnConfirmNo;
+        private Panel? pnlConfirmOverlay;
+        private Label? lblConfirmTitle;
+        private Label? lblConfirmSub;
+        private Label? btnConfirmSave;
+        private Label? btnConfirmYes;
+        private Label? btnConfirmNo;
 
         private void BuildConfirmOverlay()
         {
@@ -1159,7 +1165,7 @@ namespace StayOnTheLine.Forms
             pnlConfirmOverlay = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.FromArgb(220, 0, 0, 0),
+                BackColor = Color.FromArgb(230, 6, 8, 6),
                 Visible = false,
                 Cursor = Cursors.Default
             };
@@ -1174,7 +1180,7 @@ namespace StayOnTheLine.Forms
                 path.AddRectangle(rc);
                 using var pgb = new PathGradientBrush(path);
                 pgb.CenterColor = Color.FromArgb(0, 0, 0, 0);
-                pgb.SurroundColors = new[] { Color.FromArgb(170, 0, 0, 0) };
+                pgb.SurroundColors = new[] { Color.FromArgb(190, 0, 0, 0) };
                 pgb.FocusScales = new PointF(0.45f, 0.35f);
                 g.FillRectangle(pgb, rc);
 
@@ -1188,25 +1194,25 @@ namespace StayOnTheLine.Forms
 
             lblConfirmTitle = new Label
             {
-                Text = "ARE YOU SURE?",
-                ForeColor = Color.FromArgb(235, 228, 210),
+                Text = "RETURN TO MAIN MENU?",
+                ForeColor = Color.FromArgb(245, 240, 225),
                 BackColor = Color.Transparent,
-                AutoSize = true,
+                AutoSize = false,
                 TextAlign = ContentAlignment.MiddleCenter
             };
 
             lblConfirmSub = new Label
             {
-                Text = "The line will go silent. Unsaved progress may be lost.",
-                ForeColor = Color.FromArgb(160, 155, 140),
+                Text = "Civil defense dispatch shift in progress. Choose an option below:",
+                ForeColor = Color.FromArgb(170, 165, 150),
                 BackColor = Color.Transparent,
-                AutoSize = true,
+                AutoSize = false,
                 TextAlign = ContentAlignment.MiddleCenter
             };
 
-            btnConfirmSave = MakeConfirmButton("SAVE & EXIT");
-            btnConfirmYes  = MakeConfirmButton("YES");
-            btnConfirmNo   = MakeConfirmButton("NO");
+            btnConfirmSave = MakeConfirmButton("[ 1 ]   SAVE PROGRESS & RETURN TO MAIN MENU");
+            btnConfirmYes  = MakeConfirmButton("[ 2 ]   RETURN TO MAIN MENU WITHOUT SAVING");
+            btnConfirmNo   = MakeConfirmButton("[ 3 ]   RESUME SHIFT (CANCEL)");
 
             btnConfirmSave.Click += (s, e) => ConfirmSaveAndExit();
             btnConfirmYes.Click  += (s, e) => ConfirmExitWithoutSaving();
@@ -1224,50 +1230,88 @@ namespace StayOnTheLine.Forms
         {
             var lbl = new Label
             {
-                Text = text,
-                ForeColor = Color.FromArgb(200, 198, 190),
+                Tag = text,
+                Text = string.Empty,
+                ForeColor = Color.FromArgb(220, 215, 200),
                 BackColor = Color.Transparent,
                 AutoSize = false,
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter
             };
+
+            lbl.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = new Rectangle(0, 0, lbl.Width - 1, lbl.Height - 1);
+                using var path = CreateRoundedPath(rect, 4);
+
+                bool isHovered = lbl.ClientRectangle.Contains(lbl.PointToClient(Cursor.Position));
+                Color bgColor = isHovered
+                    ? Color.FromArgb(235, 45, 36, 26)
+                    : Color.FromArgb(180, 24, 18, 12);
+
+                using (var bgBrush = new SolidBrush(bgColor))
+                    e.Graphics.FillPath(bgBrush, path);
+
+                using (var borderPen = new Pen(isHovered
+                    ? Color.FromArgb(235, 195, 130)
+                    : Color.FromArgb(130, 140, 110, 85), 1.5f))
+                    e.Graphics.DrawPath(borderPen, path);
+
+                string caption = (lbl.Tag as string) ?? string.Empty;
+                Color textColor = isHovered ? Color.FromArgb(255, 235, 180) : Color.FromArgb(220, 215, 200);
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    caption,
+                    lbl.Font,
+                    rect,
+                    textColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            };
+
             lbl.MouseEnter += (s, e) =>
             {
                 AudioManager.Instance.PlayFrequencyBlip();
-                lbl.ForeColor = Color.FromArgb(255, 230, 180);
+                lbl.Invalidate();
             };
             lbl.MouseLeave += (s, e) =>
             {
-                lbl.ForeColor = Color.FromArgb(200, 198, 190);
+                lbl.Invalidate();
             };
             return lbl;
         }
 
         private void PositionConfirmOverlay()
         {
-            if (pnlConfirmOverlay == null) return;
+            if (pnlConfirmOverlay == null || lblConfirmTitle == null || lblConfirmSub == null ||
+                btnConfirmSave == null || btnConfirmYes == null || btnConfirmNo == null) return;
+
+            pnlConfirmOverlay.Location = new Point(0, 0);
+            pnlConfirmOverlay.Size = ClientSize;
             int W = ClientSize.Width, H = ClientSize.Height;
             float s = H / 1080f;
 
-            lblConfirmTitle.Font = FontManager.GetSmallCapsFont(Math.Max(24f, 52f * s), FontStyle.Bold);
-            lblConfirmTitle.Size = new Size(W, (int)(80 * s));
+            lblConfirmTitle.Font = FontManager.GetSmallCapsFont(Math.Max(22f, 44f * s), FontStyle.Bold);
+            lblConfirmTitle.Size = new Size(W, (int)(64 * s));
             lblConfirmTitle.Location = new Point(0, (int)(H * 0.28f));
 
             lblConfirmSub.Font = FontManager.GetItalicFont(Math.Max(10f, 15f * s));
             lblConfirmSub.Size = new Size(W, (int)(36 * s));
-            lblConfirmSub.Location = new Point(0, (int)(H * 0.28f) + (int)(85 * s));
+            lblConfirmSub.Location = new Point(0, (int)(H * 0.28f) + (int)(70 * s));
 
-            float bSize = Math.Max(14f, 24f * s);
-            int spacing = (int)(52 * s);
-            int startY = (int)(H * 0.48f);
+            float bSize = Math.Max(12f, 18f * s);
+            int btnW = Math.Max(580, (int)(660 * s));
+            int btnH = (int)(52 * s);
+            int btnX = (W - btnW) / 2;
+            int spacing = (int)(66 * s);
+            int startY = (int)(H * 0.46f);
 
             Label[] btns = { btnConfirmSave, btnConfirmYes, btnConfirmNo };
             for (int i = 0; i < btns.Length; i++)
             {
                 btns[i].Font = FontManager.GetSmallCapsFont(bSize, FontStyle.Bold);
-                btns[i].Size = new Size(W, (int)(44 * s));
-                btns[i].TextAlign = ContentAlignment.MiddleCenter;
-                btns[i].Location = new Point(0, startY + i * spacing);
+                btns[i].Size = new Size(btnW, btnH);
+                btns[i].Location = new Point(btnX, startY + i * spacing);
             }
         }
 
@@ -1275,14 +1319,23 @@ namespace StayOnTheLine.Forms
         {
             BuildConfirmOverlay();
             PositionConfirmOverlay();
-            pnlConfirmOverlay.Visible = true;
-            pnlConfirmOverlay.BringToFront();
+            pnlParchmentContainer.Visible = false;
+            if (pnlConfirmOverlay != null)
+            {
+                pnlConfirmOverlay.Visible = true;
+                pnlConfirmOverlay.BringToFront();
+            }
         }
 
         private void ConfirmSaveAndExit()
         {
-            AudioManager.Instance.PlayFrequencyBlip();
+            AudioManager.Instance.PlayInkStamp();
             SettingsManager.Instance.SaveSettings(_pendingSettings);
+            if (CurrentProfile != null)
+            {
+                CurrentProfile.LastPlayedTimestamp = DateTime.Now;
+                SaveManager.Instance.SaveProfile(CurrentProfile);
+            }
             DialogResult = DialogResult.Abort;
             Close();
         }
@@ -1302,6 +1355,7 @@ namespace StayOnTheLine.Forms
             {
                 pnlConfirmOverlay.Visible = false;
             }
+            pnlParchmentContainer.Visible = true;
         }
 
         private void btnApply_Click(object sender, EventArgs e)
@@ -1330,19 +1384,19 @@ namespace StayOnTheLine.Forms
         {
             if (pnlConfirmOverlay != null && pnlConfirmOverlay.Visible)
             {
-                if (e.KeyCode == Keys.S)
+                if (e.KeyCode == Keys.D1 || e.KeyCode == Keys.NumPad1 || e.KeyCode == Keys.S)
                 {
                     ConfirmSaveAndExit();
                     e.Handled = true;
                     return;
                 }
-                else if (e.KeyCode == Keys.Y || e.KeyCode == Keys.Enter)
+                else if (e.KeyCode == Keys.D2 || e.KeyCode == Keys.NumPad2 || e.KeyCode == Keys.Y)
                 {
                     ConfirmExitWithoutSaving();
                     e.Handled = true;
                     return;
                 }
-                else if (e.KeyCode == Keys.N || e.KeyCode == Keys.Escape)
+                else if (e.KeyCode == Keys.D3 || e.KeyCode == Keys.NumPad3 || e.KeyCode == Keys.N || e.KeyCode == Keys.Escape)
                 {
                     CancelConfirmOverlay();
                     e.Handled = true;

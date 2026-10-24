@@ -136,15 +136,89 @@ namespace StayOnTheLine
             settingsForm.ShowDialog(this);
         }
 
-        // Opens the tutorial form (automatically after creating a shift or via shortcut)
-        private void OpenTutorialFlow()
+        // Opens the tutorial form with the verified operator's profile and smooth transition
+        private void OpenTutorialFlow(Models.OperatorProfile? profile = null, Controls.OperatorVerificationOverlay? overlay = null)
         {
-            this.Hide();
-            using (var tutorial = new Tutorial())
+            var tutorial = profile != null ? new Tutorial(profile) : new Tutorial("OPERATOR");
+
+            // Hook Shown so MainForm hides ONLY after Tutorial has completely painted its first frame
+            tutorial.Shown += (s, e) =>
             {
-                tutorial.ShowDialog();
-            }
-            this.Show();
+                this.Hide();
+                if (overlay != null)
+                {
+                    if (pbBackground.Controls.Contains(overlay))
+                    {
+                        pbBackground.Controls.Remove(overlay);
+                    }
+                    else if (this.Controls.Contains(overlay))
+                    {
+                        this.Controls.Remove(overlay);
+                    }
+                    overlay.Dispose();
+                }
+            };
+
+            tutorial.FormClosed += (s, e) =>
+            {
+                if (tutorial.DialogResult == DialogResult.OK && profile != null)
+                {
+                    profile.TutorialCompleted = true;
+                    SaveManager.Instance.SaveProfile(profile);
+
+                    // Seamless transition straight from tutorial dialogue into Shift 1
+                    OpenShiftFlow(profile);
+                }
+                else
+                {
+                    this.Show();
+                    this.BringToFront();
+                    this.Activate();
+                }
+                tutorial.Dispose();
+            };
+
+            tutorial.Show();
+            tutorial.BringToFront();
+            tutorial.Activate();
+            tutorial.Focus();
+            tutorial.Update();
+        }
+
+        private void OpenShiftFlow(Models.OperatorProfile profile, Controls.OperatorVerificationOverlay? overlay = null)
+        {
+            var shiftForm = new Forms.Shift1Form(profile);
+
+            shiftForm.Shown += (s, e) =>
+            {
+                this.Hide();
+                if (overlay != null)
+                {
+                    if (pbBackground.Controls.Contains(overlay))
+                    {
+                        pbBackground.Controls.Remove(overlay);
+                    }
+                    else if (this.Controls.Contains(overlay))
+                    {
+                        this.Controls.Remove(overlay);
+                    }
+                    overlay.Dispose();
+                }
+            };
+
+            shiftForm.FormClosed += (s, e) =>
+            {
+                this.Show();
+                this.BringToFront();
+                this.Activate();
+                shiftForm.Dispose();
+            };
+
+            shiftForm.Show();
+            shiftForm.BringToFront();
+            shiftForm.Activate();
+            shiftForm.Focus();
+            shiftForm.Update();
         }
 
         private void StartNewShiftFlow()
@@ -185,16 +259,16 @@ namespace StayOnTheLine
 
             overlay.VerificationCompleted += () =>
             {
-                if (pbBackground.Controls.Contains(overlay))
+                // Smooth transition: keep overlay (which is solid black) visible
+                // until Tutorial or Shift is shown and painted, completely preventing any desktop or menu flicker!
+                if (profile.TutorialCompleted)
                 {
-                    pbBackground.Controls.Remove(overlay);
+                    OpenShiftFlow(profile, overlay);
                 }
-                else if (this.Controls.Contains(overlay))
+                else
                 {
-                    this.Controls.Remove(overlay);
+                    OpenTutorialFlow(profile, overlay);
                 }
-                overlay.Dispose();
-                OpenTutorialFlow();
             };
 
             pbBackground.Controls.Add(overlay);

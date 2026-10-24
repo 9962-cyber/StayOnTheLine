@@ -296,6 +296,8 @@ namespace StayOnTheLine.Systems
             PlayAlias($"Typewriter{variant}");
         }
 
+        public void PlayKeyClick() => PlayTypewriterKeystroke();
+
         /// <summary>
         /// Plays an antique carriage return brass bell chime.
         /// </summary>

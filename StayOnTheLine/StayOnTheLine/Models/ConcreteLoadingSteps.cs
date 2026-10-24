@@ -27,6 +27,10 @@ namespace StayOnTheLine.Models
 
         protected override void OnStepCompleted()
         {
+
+
+
+
             StatusMessage = "TRUNK LINES ONLINE.";
         }
     }

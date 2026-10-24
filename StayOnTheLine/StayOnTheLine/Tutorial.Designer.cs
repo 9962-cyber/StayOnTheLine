@@ -145,7 +145,7 @@ namespace StayOnTheLine
             // BORDERLESS FULLSCREEN (1920x1080 design size)
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
             this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
-            this.TopMost = true;
+            this.TopMost = false;
 
             ((System.ComponentModel.ISupportInitialize)(this.picBackground)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.picCharacter)).EndInit();

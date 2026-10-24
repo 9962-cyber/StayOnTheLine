@@ -765,7 +765,7 @@ namespace StayOnTheLine.Forms
             lblFooterHelp.ForeColor = Color.FromArgb(65, 48, 32);
             lblFooterHelp.Location = new Point(65, 688);
             lblFooterHelp.Name = "lblFooterHelp";
-            lblFooterHelp.Size = new Size(475, 24);
+            lblFooterHelp.Size = new Size(440, 24);
             lblFooterHelp.TabIndex = 8;
             lblFooterHelp.Text = "Press ENTER to Apply && Save · Press ESC or ✕ to Discard";
             lblFooterHelp.TextAlign = ContentAlignment.MiddleLeft;

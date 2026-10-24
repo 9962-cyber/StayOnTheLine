@@ -30,11 +30,11 @@ namespace StayOnTheLine
         {
             public string Speaker { get; set; }
             public string Text { get; set; }
-            public string Expression { get; set; }
+            public string? Expression { get; set; }
             public CharSide? Side { get; set; }
-            public string Background { get; set; }
+            public string? Background { get; set; }
 
-            public DialogueLine(string speaker, string text, string expression = null, CharSide? side = null, string background = null)
+            public DialogueLine(string speaker, string text, string? expression = null, CharSide? side = null, string? background = null)
             {
                 Speaker = speaker;
                 Text = text;
@@ -45,14 +45,14 @@ namespace StayOnTheLine
         }
 
         private Queue<DialogueLine> storyQueue = new Queue<DialogueLine>();
-        private FormsTimer typingTimer;
+        private FormsTimer typingTimer = null!;
         private string currentFullText = "";
         private int charIndex = 0;
         private bool isTyping = false;
 
         // Backgrounds
-        private Image defaultBackground;                                   // used by everyone without their own
-        private Image originalBackground;                                  // the one currently shown (full size)
+        private Image? defaultBackground;                                   // used by everyone without their own
+        private Image? originalBackground;                                  // the one currently shown (full size)
         private Dictionary<string, Image> speakerBackgrounds = new Dictionary<string, Image>(StringComparer.OrdinalIgnoreCase);
 
         // Character art organized by character -> expression -> Image
@@ -73,15 +73,27 @@ namespace StayOnTheLine
             { "CHLOE",  CharSide.Center }
         };
         private CharSide currentSide = CharSide.Center;
-        private Image currentCharacterImage;
+        private Image? currentCharacterImage;
         private Rectangle characterBounds;
         private bool characterVisible = false;
 
         // Font used everywhere (falls back to Georgia if IM Fell isn't installed)
         private readonly string fontName;
+        private readonly string _playerName;
+        private readonly StayOnTheLine.Models.OperatorProfile? _profile;
 
-        public Tutorial()
+        public Tutorial() : this(new StayOnTheLine.Models.OperatorProfile(1, "OPERATOR"))
         {
+        }
+
+        public Tutorial(string playerName) : this(new StayOnTheLine.Models.OperatorProfile(1, string.IsNullOrWhiteSpace(playerName) ? "OPERATOR" : playerName.Trim()))
+        {
+        }
+
+        public Tutorial(StayOnTheLine.Models.OperatorProfile profile)
+        {
+            _profile = profile ?? new StayOnTheLine.Models.OperatorProfile(1, "OPERATOR");
+            _playerName = _profile.OperatorName;
             InitializeComponent();
 
             fontName = FontExists("IM FELL DW Pica") ? "IM FELL DW Pica" : "Georgia";
@@ -109,9 +121,10 @@ namespace StayOnTheLine
             originalBackground = defaultBackground;
 
             // Different background while CHARM is speaking
-            speakerBackgrounds["CHARM"] = LoadAsset("tutorialdialogue_bg.png",
+            var charmBg = LoadAsset("tutorialdialogue_bg.png",
                 () => MakePlaceholderBackground("CHARM BACKGROUND PLACEHOLDER",
                                                 Color.FromArgb(78, 52, 70), Color.FromArgb(16, 8, 14)));
+            if (charmBg != null) speakerBackgrounds["CHARM"] = charmBg;
 
             // Load all character expression assets from Assets folder
             LoadCharacterAssets();
@@ -142,7 +155,7 @@ namespace StayOnTheLine
                 return fonts.Families.Any(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         }
 
-        private Image LoadAsset(string fileName, Func<Image> placeholder)
+        private Image? LoadAsset(string fileName, Func<Image>? placeholder = null)
         {
             var searchNames = new List<string> { fileName };
             if (!Path.HasExtension(fileName))
@@ -206,6 +219,8 @@ namespace StayOnTheLine
             {
                 Application.StartupPath,
                 AppDomain.CurrentDomain.BaseDirectory,
+                Path.GetFullPath(Path.Combine(Application.StartupPath, "..", "..", "..")),
+                Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..")),
                 Path.GetFullPath(Path.Combine(Application.StartupPath, "..", "..")),
                 Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..")),
                 Directory.GetCurrentDirectory()
@@ -226,7 +241,12 @@ namespace StayOnTheLine
                     // Skip background files
                     if (fname.StartsWith("bg_", StringComparison.OrdinalIgnoreCase) ||
                         fname.StartsWith("tutorial", StringComparison.OrdinalIgnoreCase) ||
-                        fname.StartsWith("test_", StringComparison.OrdinalIgnoreCase))
+                        fname.StartsWith("test_", StringComparison.OrdinalIgnoreCase) ||
+                        fname.StartsWith("loading", StringComparison.OrdinalIgnoreCase) ||
+                        fname.StartsWith("main", StringComparison.OrdinalIgnoreCase) ||
+                        fname.StartsWith("computer", StringComparison.OrdinalIgnoreCase) ||
+                        fname.StartsWith("endshift", StringComparison.OrdinalIgnoreCase) ||
+                        fname.StartsWith("shiftbriefing", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
@@ -236,6 +256,10 @@ namespace StayOnTheLine
                     {
                         string charName = fname.Substring(0, underscore).ToUpperInvariant();
                         string expression = fname.Substring(underscore + 1).ToLowerInvariant();
+                        if (expression.EndsWith(" - copy", StringComparison.OrdinalIgnoreCase))
+                        {
+                            expression = expression.Replace(" - copy", "", StringComparison.OrdinalIgnoreCase).Trim();
+                        }
 
                         if (!characterExpressions.TryGetValue(charName, out var expMap))
                         {
@@ -276,7 +300,7 @@ namespace StayOnTheLine
             }
 
             // 2. Set default fallback image for each character
-            string[] preferredDefaults = { "default", "talking", "smile", "serious", "neutral", "sad" };
+            string[] preferredDefaults = { "talking", "smile", "serious", "default", "neutral", "sad", "annoyed", "concerned" };
             foreach (var kvp in characterExpressions)
             {
                 string charName = kvp.Key;
@@ -284,10 +308,10 @@ namespace StayOnTheLine
 
                 if (!characterImages.ContainsKey(charName) && expMap.Count > 0)
                 {
-                    Image chosen = null;
+                    Image? chosen = null;
                     foreach (string pref in preferredDefaults)
                     {
-                        if (expMap.TryGetValue(pref, out Image img))
+                        if (expMap.TryGetValue(pref, out Image? img))
                         {
                             chosen = img;
                             break;
@@ -296,56 +320,44 @@ namespace StayOnTheLine
                     characterImages[charName] = chosen ?? expMap.Values.First();
                 }
             }
-
-            // 3. Fallback placeholder silhouettes only if no art is available
-            string[] knownChars = { "YSA", "CHARM", "KRISHA", "STEF", "CHLOE" };
-            Color[] colors = {
-                Color.FromArgb(70, 70, 80),
-                Color.FromArgb(50, 70, 60),
-                Color.FromArgb(60, 50, 80),
-                Color.FromArgb(80, 60, 50),
-                Color.FromArgb(50, 60, 80)
-            };
-
-            for (int i = 0; i < knownChars.Length; i++)
-            {
-                string c = knownChars[i];
-                if (!characterImages.ContainsKey(c))
-                {
-                    Image placeholder = MakePlaceholderCharacter(c, colors[i]);
-                    characterImages[c] = placeholder;
-                    if (!characterExpressions.TryGetValue(c, out var map))
-                    {
-                        map = new Dictionary<string, Image>(StringComparer.OrdinalIgnoreCase);
-                        characterExpressions[c] = map;
-                    }
-                    map["default"] = placeholder;
-                }
-            }
         }
 
-        private Image GetCharacterImage(string speaker, string expression)
+        private Image? GetCharacterImage(string speaker, string? expression)
         {
             if (string.IsNullOrEmpty(speaker)) return null;
+
+            // Narration or player never has a character portrait
+            if (string.Equals(speaker, "NARRATION", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(speaker, "Y/N", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(speaker, _playerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
 
             if (characterExpressions.TryGetValue(speaker, out var expMap))
             {
                 if (!string.IsNullOrEmpty(expression))
                 {
-                    if (expMap.TryGetValue(expression, out Image img))
+                    if (expMap.TryGetValue(expression, out Image? img))
                         return img;
 
-                    if (string.Equals(expression, "annoyed", StringComparison.OrdinalIgnoreCase) && expMap.TryGetValue("concerned", out Image cImg))
+                    if (string.Equals(expression, "annoyed", StringComparison.OrdinalIgnoreCase) && expMap.TryGetValue("concerned", out Image? cImg))
                         return cImg;
 
-                    if (string.Equals(expression, "concerned", StringComparison.OrdinalIgnoreCase) && expMap.TryGetValue("annoyed", out Image aImg))
+                    if (string.Equals(expression, "concerned", StringComparison.OrdinalIgnoreCase) && expMap.TryGetValue("annoyed", out Image? aImg))
                         return aImg;
+
+                    if (string.Equals(expression, "giggle", StringComparison.OrdinalIgnoreCase) && expMap.TryGetValue("smile", out Image? sImg))
+                        return sImg;
+
+                    if (string.Equals(expression, "crashout", StringComparison.OrdinalIgnoreCase) && expMap.TryGetValue("serious", out Image? srImg))
+                        return srImg;
                 }
 
-                string[] fallbacks = { "default", "talking", "smile", "serious", "concerned", "neutral", "sad" };
+                string[] fallbacks = { "talking", "smile", "serious", "default", "concerned", "neutral", "sad", "annoyed" };
                 foreach (string fb in fallbacks)
                 {
-                    if (expMap.TryGetValue(fb, out Image fbImg))
+                    if (expMap.TryGetValue(fb, out Image? fbImg))
                         return fbImg;
                 }
 
@@ -353,7 +365,7 @@ namespace StayOnTheLine
                     return expMap.Values.First();
             }
 
-            if (characterImages.TryGetValue(speaker, out Image defaultImg))
+            if (characterImages.TryGetValue(speaker, out Image? defaultImg))
             {
                 return defaultImg;
             }
@@ -445,7 +457,7 @@ namespace StayOnTheLine
             picBackground.Invalidate(true);
         }
 
-        private void PicBackground_Paint(object sender, PaintEventArgs e)
+        private void PicBackground_Paint(object? sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             int w = picBackground.Width;
@@ -544,42 +556,48 @@ namespace StayOnTheLine
             }
         }
 
-        // ------------------------------------------------------------------
-        //  STORY
-        // ------------------------------------------------------------------
         private void LoadStory()
         {
-            storyQueue.Enqueue(new DialogueLine("Y/N", "Your application was approved three days ago."));
+            storyQueue.Enqueue(new DialogueLine(_playerName, "Your application was approved three days ago."));
             storyQueue.Enqueue(new DialogueLine("NARRATION", "Tonight is your first overnight shift at the emergency dispatch center."));
-            storyQueue.Enqueue(new DialogueLine("NARRATION", "The building looks older than it did during your interview. Fluorescent lights buzz overhead. A wall clock ticks above a row of desks, and the CRT monitors cast a faint glow across the room."));
-            storyQueue.Enqueue(new DialogueLine("NARRATION", "A printer rattles somewhere behind you."));
-            storyQueue.Enqueue(new DialogueLine("NARRATION", "On the wall is a faded department slogan: EVERY CALL MATTERS, EVERY SECOND COUNTS."));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "The building looks older than it did during your interview. Fluorescent lights buzz overhead. A wall clock ticks above a row of desks, and the CRT monitors cast a faint phosphor glow across the room."));
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "A printer rattles somewhere behind you. On the wall is a faded slogan: EVERY CALL MATTERS, EVERY SECOND COUNTS."));
 
+            // 1. Shift Trainer Ysa conducts shift briefing
+            storyQueue.Enqueue(new DialogueLine("YSA", "Attention, new dispatcher. I am Ysa, your shift trainer.", "serious", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Tonight begins your provisional training protocol. The calls you receive tonight are genuine emergency trunk lines.", "talking", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("YSA", "Follow procedure strictly: verify the reported address, inspect the station incident logs, and never dispatch our limited patrol units without reasonable justification.", "serious", CharSide.Left));
 
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "[A woman approaches your desk carrying a folder.] First night?", "serious", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Don't worry. The phones look intimidating, but most people just need someone to listen.", "smile", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "I'm Krisha Siblero. I'll be training you tonight.", "talking", CharSide.Left));
+            // 2. Neighboring console Charm chimes in
+            storyQueue.Enqueue(new DialogueLine("CHARM", "Translation: don't panic, don't guess, and don't make Ysa's paperwork worse than it already is.", "giggle", CharSide.Right));
 
-            storyQueue.Enqueue(new DialogueLine("CHARM", "Hey! Don't scare the newbie before they even get their headset on.", "giggle", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "I'm Charm Villareal. Your neighboring console, unofficial coffee supplier, and the person you should ask if you need anything.", "smile", CharSide.Right));
+            // 3. Trainer Ysa disciplines Charm
+            storyQueue.Enqueue(new DialogueLine("YSA", "Villareal. Headset on. Back to your line.", "annoyed", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("CHARM", "Yes, ma'am! Just offering official morale support to the trainee.", "smile", CharSide.Right));
 
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Anything?", "concerned", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "Almost anything.", "giggle", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "That's what worries me.", "serious", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "See? She's already telling you stories about me.", "smile", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "I'm telling them to keep an eye on you.", "concerned", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "Same thing!", "giggle", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "She's been here for years. She knows everyone, remembers everyone's birthday, and somehow always knows when someone needs coffee.", "talking", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "She's also very good at making a serious situation sound less serious than it is.", "serious", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("CHARM", "I heard that!", "crashout", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "You were supposed to.", "smile", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "All right. Jokes aside, listen carefully. Rule number one: verify the address before sending a unit, whenever it's safe to do so.", "serious", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number two: check the incident log if something doesn't look right.", "serious", CharSide.Left));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number three: don't panic just because the caller does. A frightened person may struggle to explain what's happening.", "talking", CharSide.Left));
+            // 4. Ysa exits to supervisory office; Krisha Narciso steps over as Shift Supervisor
+            storyQueue.Enqueue(new DialogueLine("NARRATION", "[Trainer Ysa heads into the administrative office. Night Desk Supervisor Krisha Narciso steps over to stand beside your workstation.]"));
+
+            // 5. Krisha Narciso - Shift Supervisor introduction & banter
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "First night? Don't let Ysa's strict tone intimidate you. The switchboards look overwhelming, but most callers just need someone calm to listen.", "smile", CharSide.Center));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "I'm Krisha Narciso, your shift supervisor. I'll be monitoring your console feed tonight and evaluating your performance.", "talking", CharSide.Center));
+
+            storyQueue.Enqueue(new DialogueLine("CHARM", "And I'm Charm Villareal! Your neighboring console, unofficial coffee supplier, and resident emergency backup.", "smile", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Unofficial coffee supplier?", "concerned", CharSide.Center));
+            storyQueue.Enqueue(new DialogueLine("CHARM", "Hey, caffeine keeps this city safe.", "giggle", CharSide.Right));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Just make sure you don't spill it on the trunk terminals.", "smile", CharSide.Center));
+
+            // 6. Krisha's 3 Core Rules
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "All right. Jokes aside, listen carefully. Rule number one: verify the address before sending a unit, whenever it's safe to do so.", "serious", CharSide.Center));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number two: check the incident log if something doesn't look right. Discrepancies matter.", "serious", CharSide.Center));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "Rule number three: don't panic just because the caller does. A frightened person may struggle to explain what's happening.", "talking", CharSide.Center));
+
             storyQueue.Enqueue(new DialogueLine("CHARM", "And rule number four: don't let Ysa catch you sleeping.", "smile", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "There is no rule number four.", "concerned", CharSide.Left));
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "There is no rule number four.", "concerned", CharSide.Center));
             storyQueue.Enqueue(new DialogueLine("CHARM", "There is if you value your employment.", "serious", CharSide.Right));
-            storyQueue.Enqueue(new DialogueLine("KRISHA", "[A telephone rings across the room. Charm immediately turns back to her console.] That's your first lesson. Let's see how you do.", "serious", CharSide.Left));
+
+            // 7. Telephone rings -> transition to computer terminal
+            storyQueue.Enqueue(new DialogueLine("KRISHA", "[A telephone rings across the room on Trunk Line 01. Charm immediately turns back to her console.] That's our first incoming emergency line. Head to your terminal and answer it.", "serious", CharSide.Center));
         }
 
         private void DisplayNextLine()
@@ -595,12 +613,12 @@ namespace StayOnTheLine
             DialogueLine line = storyQueue.Dequeue();
 
             // Pick the background for this speaker or line (default for everyone else)
-            Image wanted = defaultBackground;
-            if (!string.IsNullOrEmpty(line.Background) && speakerBackgrounds.TryGetValue(line.Background, out Image lineBg))
+            Image? wanted = defaultBackground;
+            if (!string.IsNullOrEmpty(line.Background) && speakerBackgrounds.TryGetValue(line.Background, out Image? lineBg))
             {
                 wanted = lineBg;
             }
-            else if (speakerBackgrounds.TryGetValue(line.Speaker, out Image spkBg))
+            else if (speakerBackgrounds.TryGetValue(line.Speaker, out Image? spkBg))
             {
                 wanted = spkBg;
             }
@@ -611,22 +629,43 @@ namespace StayOnTheLine
                 UpdateBackground();
             }
 
-            if (line.Speaker == "NARRATION")
+            if (string.Equals(line.Speaker, "NARRATION", StringComparison.OrdinalIgnoreCase))
             {
-                lblSpeaker.Text = "Y/N";
-                lblIncoming.Text = "";
+                lblSpeaker.Text = "DISPATCH BRIEFING";
+                lblIncoming.Text = "PROTOCOL LOG";
+            }
+            else if (string.Equals(line.Speaker, "Y/N", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(line.Speaker, _playerName, StringComparison.OrdinalIgnoreCase))
+            {
+                lblSpeaker.Text = _playerName;
+                lblIncoming.Text = "TRAINEE DISPATCHER";
+            }
+            else if (string.Equals(line.Speaker, "KRISHA", StringComparison.OrdinalIgnoreCase))
+            {
+                lblSpeaker.Text = "KRISHA NARCISO";
+                lblIncoming.Text = "NIGHT DESK SUPERVISOR";
+            }
+            else if (string.Equals(line.Speaker, "YSA", StringComparison.OrdinalIgnoreCase))
+            {
+                lblSpeaker.Text = "YSA";
+                lblIncoming.Text = "SHIFT TRAINER";
+            }
+            else if (string.Equals(line.Speaker, "CHARM", StringComparison.OrdinalIgnoreCase))
+            {
+                lblSpeaker.Text = "CHARM VILLAREAL";
+                lblIncoming.Text = "OPERATOR / CONSOLE 03";
             }
             else
             {
                 lblSpeaker.Text = line.Speaker;
-                lblIncoming.Text = line.Speaker == "Y/N" ? "" : "INCOMING / VOICE";
+                lblIncoming.Text = "INCOMING / VOICE";
             }
 
             // Show the speaking character with their expression.
             // The sprite is drawn entirely by PicBackground_Paint using characterBounds –
             // picCharacter is kept hidden because its Bounds are never set and would appear
             // at (0,0) with a tiny default size (the bug visible in the upper-left corner).
-            Image charImg = GetCharacterImage(line.Speaker, line.Expression);
+            Image? charImg = GetCharacterImage(line.Speaker, line.Expression);
             if (charImg != null)
             {
                 currentCharacterImage = charImg;
@@ -666,7 +705,7 @@ namespace StayOnTheLine
             typingTimer.Start();
         }
 
-        private void TypingTimer_Tick(object sender, EventArgs e)
+        private void TypingTimer_Tick(object? sender, EventArgs e)
         {
             if (charIndex < currentFullText.Length)
             {
@@ -684,7 +723,7 @@ namespace StayOnTheLine
         // ------------------------------------------------------------------
         //  INPUT
         // ------------------------------------------------------------------
-        private void Form_Click(object sender, EventArgs e)
+        private void Form_Click(object? sender, EventArgs e)
         {
             Advance();
         }
@@ -704,7 +743,7 @@ namespace StayOnTheLine
             }
         }
 
-        private void Tutorial_KeyDown(object sender, KeyEventArgs e)
+        private void Tutorial_KeyDown(object? sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)
             {
@@ -718,13 +757,15 @@ namespace StayOnTheLine
             }
         }
 
-        private void btnSettings_Click(object sender, EventArgs e)
+        private void btnSettings_Click(object? sender, EventArgs e)
         {
             using var sf = new Forms.SettingsForm();
             sf.ShowExitButton = true;
+            sf.CurrentProfile = _profile;
             var result = sf.ShowDialog(this);
             if (result == DialogResult.Abort)
             {
+                this.DialogResult = DialogResult.Cancel;
                 this.Close();
             }
         }

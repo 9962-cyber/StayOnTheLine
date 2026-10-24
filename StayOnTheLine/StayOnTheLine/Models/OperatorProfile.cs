@@ -48,6 +48,8 @@ namespace StayOnTheLine.Models
 
         public int ProtocolErrors { get; set; } = 0;
 
+        public bool TutorialCompleted { get; set; } = false;
+
         public List<string> AnomalyFlags { get; set; } = new();
 
         /// <summary>
