@@ -2133,7 +2133,8 @@ namespace StayOnTheLine.Forms
             bool reportOpen = _pnlDebriefModal != null && _pnlDebriefModal.Visible;
             bool ringing = !reportOpen && !call.IsRestricted &&
                            call.Stage == CallStage.Ringing && call.Status != CallQueueStatus.Resolved &&
-                           !Shift3BriefingPending; // Shift 3: the first call rings after the briefing
+                           !Shift3BriefingPending && // Shift 3: the first call rings after the briefing
+                           !ShiftBookOpen;           // nothing rings until the player clocks in
 
             if (ringing) AudioManager.Instance.StartPhoneRing();
             else AudioManager.Instance.StopPhoneRing();
@@ -2873,6 +2874,14 @@ namespace StayOnTheLine.Forms
             {
                 _pnlManualModal.Bounds = ClientRectangle;
                 _pnlManualModal.BringToFront();
+                return;
+            }
+
+            // The Shift Briefing book covers the desk until the player clocks in
+            if (_pnlShiftBook != null)
+            {
+                _pnlShiftBook.Bounds = ClientRectangle;
+                _pnlShiftBook.BringToFront();
                 return;
             }
 
@@ -3956,7 +3965,7 @@ namespace StayOnTheLine.Forms
             // Start in Desk Room View so the player sees their station, then clicks into computer
             SwitchView(ViewState.DeskRoom);
             UpdatePhoneRing(); // the first line is already ringing while you sit at the desk
-            if (Scenario.ShiftNumber == 3) PlayShift3OpeningScene();
+            BeginShiftBriefing(); // optional opening scene, then the Shift Briefing book (CLOCK IN starts the shift)
         }
     }
 

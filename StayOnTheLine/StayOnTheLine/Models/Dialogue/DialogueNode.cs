@@ -24,6 +24,12 @@ namespace StayOnTheLine.Models.Dialogue
         public PlayerAction? Action { get; private set; }
         public string ChoicePrompt { get; private set; } = DefaultPrompt;
 
+        /// <summary>
+        /// True when the choices are spoken out loud to someone at the desk (shown under their
+        /// dialogue box) rather than typed into the messenger.
+        /// </summary>
+        public bool ChoicesInRoom { get; private set; }
+
         public bool IsEnding => NextNodeId == null && Action == null && _choices.Count == 0;
 
         public DialogueNode(string id, params ChatMessage[] messages)
@@ -58,6 +64,13 @@ namespace StayOnTheLine.Models.Dialogue
         public DialogueNode Prompt(string prompt)
         {
             ChoicePrompt = prompt;
+            return this;
+        }
+
+        /// <summary>The choices are answered out loud in the room, not in the messenger.</summary>
+        public DialogueNode InRoom()
+        {
+            ChoicesInRoom = true;
             return this;
         }
 

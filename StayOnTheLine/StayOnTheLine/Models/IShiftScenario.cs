@@ -15,6 +15,9 @@ namespace StayOnTheLine.Models
         string SupervisorName { get; }
         int InitialUnits { get; }
         bool HasTutorialGuidance { get; }
+
+        /// <summary>Contents of the Shift Briefing book shown before the shift starts.</summary>
+        ShiftBriefing Briefing { get; }
         List<EmergencyCall> GenerateCalls();
         string GetDebriefMessage(ShiftState state);
     }

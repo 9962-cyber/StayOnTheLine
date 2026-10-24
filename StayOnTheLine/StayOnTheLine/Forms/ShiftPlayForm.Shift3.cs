@@ -474,55 +474,8 @@ namespace StayOnTheLine.Forms
         };
 
         // ──────────────────────────────────────────────────────────────
-        // Shift 3 story scenes, played in the room (same scene box Charm uses during calls)
+        // Shift 3 briefing scene (flowchart "Shift Briefing"), played in the room
         // ──────────────────────────────────────────────────────────────
-
-        private readonly Dictionary<string, Image?> _shift3Sprites = new();
-
-        private Image? Shift3Sprite(string key)
-        {
-            if (!_shift3Sprites.TryGetValue(key, out var img))
-            {
-                img = TryLoadImage(key + ".png");
-                _shift3Sprites[key] = img;
-            }
-            return img;
-        }
-
-        /// <summary>Plays lines as a full-screen room scene; <paramref name="onFinished"/> runs once it closes.</summary>
-        private void PlayShift3Scene(IEnumerable<(string Speaker, string Text, string? Sprite, string Tag)> lines, Action? onFinished = null)
-        {
-            _charmDialogue.Clear();
-            _charmDialogue.Docked = false;
-            LayoutCharmDialogue();
-
-            if (onFinished != null)
-            {
-                void Handler(object? s, EventArgs e)
-                {
-                    _charmDialogue.Finished -= Handler;
-                    onFinished();
-                }
-                _charmDialogue.Finished += Handler;
-            }
-
-            foreach (var (speaker, text, sprite, tag) in lines)
-                _charmDialogue.Enqueue(speaker, text, sprite != null ? Shift3Sprite(sprite) : null, tag);
-        }
-
-        /// <summary>
-        /// Opening scene (flowchart: SHIFT 3 → Before call convo): 01:50 AM, Stef's message arrives.
-        /// The thread itself opens from the records terminal.
-        /// </summary>
-        private void PlayShift3OpeningScene()
-        {
-            PlayShift3Scene(new (string, string, string?, string)[]
-            {
-                ("", "[01:50 AM — Dispatch Center]", null, ""),
-                ("", $"[{Profile.OperatorName} receives a message on the records terminal.]", null, ""),
-                ("STEF", "Are you seeing strange timestamps on your end?", "stef_neutral", "RECORDS ARCHIVE // TEXT CHAT")
-            }, () => _lblSupervisorBar.Text = "SYSTEM: RECORDS TERMINAL: 1 UNREAD MESSAGE.");
-        }
 
         /// <summary>
         /// Shift Briefing scene (after Stef's thread): Krisha and Charm at the desk.
@@ -538,15 +491,15 @@ namespace StayOnTheLine.Forms
             OnClick = () =>
             {
                 StartTypewriter("SYSTEM: SHIFT 3 STARTED.\nSYSTEM: AVAILABLE UNITS: 2.");
-                PlayShift3Scene(new (string, string, string?, string)[]
+                PlayRoomScene(new[]
                 {
-                    ("", "Shift Briefing", null, ""),
-                    ("", "SYSTEM: SHIFT 3 STARTED.", null, ""),
-                    ("", "SYSTEM: AVAILABLE UNITS: 2.", null, ""),
-                    ("KRISHA", "We have fewer units available tonight. Prioritize immediate danger and make sure your actions are documented.", "krisha_serious", "SHIFT SUPERVISOR"),
-                    ("KRISHA", "Any record irregularities must be reported through the proper channel. Do not make unauthorized changes.", "krisha_talking", "SHIFT SUPERVISOR"),
-                    ("CHARMEE", "Two units. That's going to be a long night.", "charm_serious", "NEIGHBORING CONSOLE"),
-                    ("CHARMEE", "Well, at least we have each other.", "charm_smile", "NEIGHBORING CONSOLE")
+                    new BriefingSceneLine("", "Shift Briefing"),
+                    new BriefingSceneLine("", "SYSTEM: SHIFT 3 STARTED."),
+                    new BriefingSceneLine("", "SYSTEM: AVAILABLE UNITS: 2."),
+                    new BriefingSceneLine("KRISHA", "We have fewer units available tonight. Prioritize immediate danger and make sure your actions are documented.", "krisha_serious", "SHIFT SUPERVISOR"),
+                    new BriefingSceneLine("KRISHA", "Any record irregularities must be reported through the proper channel. Do not make unauthorized changes.", "krisha_talking", "SHIFT SUPERVISOR"),
+                    new BriefingSceneLine("CHARMEE", "Two units. That's going to be a long night.", "charm_serious", "NEIGHBORING CONSOLE"),
+                    new BriefingSceneLine("CHARMEE", "Well, at least we have each other.", "charm_smile", "NEIGHBORING CONSOLE")
                 }, () =>
                 {
                     _shift2Asked.Add(S3Briefing);

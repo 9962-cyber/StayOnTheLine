@@ -17,6 +17,28 @@ namespace StayOnTheLine.Systems
         public int InitialUnits => 2;
         public bool HasTutorialGuidance => false;
 
+        // Krisha's shift briefing; a short "another shift" scene plays before the book opens
+        public ShiftBriefing Briefing => new(
+            "Three",
+            "23:00 – 03:00",
+            new[]
+            {
+                "Prioritize immediate danger",
+                "Document every action taken",
+                "Report record irregularities through the proper channel",
+                "Make no unauthorized changes to records"
+            },
+            "Krisha's account is still active after her reported transfer. Who has been signing in as her?")
+        {
+            OpeningScene = new[]
+            {
+                new BriefingSceneLine("", "[Another night. Another shift.]"),
+                new BriefingSceneLine("", "[{operator} signs in at Terminal 04. The fluorescent lights hum overhead, and the CRT monitors flicker awake.]"),
+                new BriefingSceneLine("CHARMEE", "Another day, another shift, huh?", "charm_smile", "NEIGHBORING CONSOLE"),
+                new BriefingSceneLine("CHARMEE", "Read the briefing before you clock in. We've only got two units tonight.", "charm_default", "NEIGHBORING CONSOLE")
+            }
+        };
+
         public List<EmergencyCall> GenerateCalls()
         {
             return new List<EmergencyCall>

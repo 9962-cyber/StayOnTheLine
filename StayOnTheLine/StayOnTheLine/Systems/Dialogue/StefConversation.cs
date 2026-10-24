@@ -140,6 +140,7 @@ namespace StayOnTheLine.Systems.Dialogue
                         Charm("Everything okay over here?", "charm_smile")
                             with { Cue = SceneCue.CharmEnters | SceneCue.CloseAuditLog })
                     .Prompt("RESPOND TO CHARM - SHE IS STANDING AT YOUR DESK")
+                    .InRoom()
                     .Choice("Say you're checking an unusual record.", "charmUnusual",
                         Room("[You tell her you're checking an unusual record.]"),
                         FlagToldCharm)

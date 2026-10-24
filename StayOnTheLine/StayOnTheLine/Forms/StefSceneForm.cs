@@ -51,6 +51,7 @@ namespace StayOnTheLine.Forms
         private readonly CharacterPortrait _charm = new() { Visible = false };
         private readonly RoomCaption _caption = new() { Visible = false };
         private readonly BevelButton _btnBack = new() { Text = "‹ BACK" };
+        private readonly List<RoomChoiceButton> _roomChoices = new();
 
         // Timers: message pump (typing delays), animations, terminal clock
         private readonly System.Windows.Forms.Timer _pump = new();
@@ -312,7 +313,13 @@ namespace StayOnTheLine.Forms
             if (node == null) return;
 
             var response = _messenger.Response;
-            if (_runner.IsAwaitingChoice)
+            if (_runner.IsAwaitingChoice && node.ChoicesInRoom)
+            {
+                // Answered out loud: buttons under the speaker's dialogue box, messenger stays locked
+                response.ShowWaiting("RESPOND OUT LOUD");
+                ShowRoomChoices(node.Choices);
+            }
+            else if (_runner.IsAwaitingChoice)
             {
                 response.ShowChoices(node.ChoicePrompt, node.Choices);
             }
@@ -335,8 +342,37 @@ namespace StayOnTheLine.Forms
         private void OnChoiceSelected(object? sender, int index)
         {
             if (!_runner.IsAwaitingChoice) return;
+            ClearRoomChoices();
             _runner.Choose(index);
             ScheduleNext();
+        }
+
+        private void ShowRoomChoices(IReadOnlyList<DialogueChoice> choices)
+        {
+            ClearRoomChoices();
+            for (int i = 0; i < choices.Count; i++)
+            {
+                int index = i;
+                var button = new RoomChoiceButton { Text = choices[i].Text };
+                button.Click += (s, e) => OnChoiceSelected(this, index);
+                _roomChoices.Add(button);
+                Controls.Add(button);
+                button.BringToFront();
+            }
+            _caption.CompleteTyping();
+            LayoutScene();
+        }
+
+        private void ClearRoomChoices()
+        {
+            if (_roomChoices.Count == 0) return;
+            foreach (var button in _roomChoices)
+            {
+                Controls.Remove(button);
+                button.Dispose();
+            }
+            _roomChoices.Clear();
+            LayoutScene();
         }
 
         private void OnPlayerAction()
@@ -401,7 +437,15 @@ namespace StayOnTheLine.Forms
 
             if (option >= 0)
             {
-                e.Handled = _messenger.Response.TrySelect(option);
+                if (option < _roomChoices.Count)
+                {
+                    OnChoiceSelected(this, option);
+                    e.Handled = true;
+                }
+                else
+                {
+                    e.Handled = _messenger.Response.TrySelect(option);
+                }
             }
             else if (e.KeyCode is Keys.Space or Keys.Enter)
             {
@@ -531,7 +575,21 @@ namespace StayOnTheLine.Forms
             int capRightLimit = charmShown + (int)(pw * 0.12f);
             if (capX + capW > capRightLimit) capX = Math.Max(16, capRightLimit - capW);
             capW = Math.Min(capW, capRightLimit - capX);
-            _caption.Bounds = new Rectangle(capX, H - capH - (int)(H * 0.035f), Math.Max(200, capW), capH);
+            capW = Math.Max(200, capW);
+            int bottomMargin = (int)(H * 0.035f);
+
+            // Spoken choices sit in a row under the caption, which moves up to make room
+            if (_roomChoices.Count > 0)
+            {
+                int gap = Math.Max(8, (int)(capH * 0.08f));
+                int choiceH = Math.Max(40, (int)(capH * 0.42f));
+                int choiceW = (capW - gap * (_roomChoices.Count - 1)) / _roomChoices.Count;
+                int choiceY = H - bottomMargin - choiceH;
+                for (int i = 0; i < _roomChoices.Count; i++)
+                    _roomChoices[i].Bounds = new Rectangle(capX + i * (choiceW + gap), choiceY, choiceW, choiceH);
+                bottomMargin += choiceH + gap;
+            }
+            _caption.Bounds = new Rectangle(capX, H - capH - bottomMargin, capW, capH);
 
             // 5. Back button on the monitor bezel, above the screen's top-right corner
             int bezel = Math.Max(0, screen.Y - _imgRect.Y);

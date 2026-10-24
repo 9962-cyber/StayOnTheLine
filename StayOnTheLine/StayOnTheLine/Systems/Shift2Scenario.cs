@@ -11,6 +11,19 @@ namespace StayOnTheLine.Systems
         public int InitialUnits => 3;
         public bool HasTutorialGuidance => false;
 
+        // Ysa's shift briefing
+        public ShiftBriefing Briefing => new(
+            "Two",
+            "23:00 – 03:00",
+            new[]
+            {
+                "Prioritize the incoming queue",
+                "Verify addresses",
+                "Document discrepancies",
+                "Don't leave urgent calls unattended"
+            },
+            "The Bell Street record was modified before the call was received.");
+
         public List<EmergencyCall> GenerateCalls()
         {
             return new List<EmergencyCall>

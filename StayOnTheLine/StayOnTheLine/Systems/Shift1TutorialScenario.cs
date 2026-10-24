@@ -20,6 +20,18 @@ namespace StayOnTheLine.Systems
         public int InitialUnits => 3;
         public bool HasTutorialGuidance => true;
 
+        // Krisha's three basic rules from the first night's tutorial
+        public ShiftBriefing Briefing => new(
+            "One",
+            "23:00 – 03:00",
+            new[]
+            {
+                "Verify the address before sending a unit, whenever it's safe to do so",
+                "Check the incident log if something doesn't look right",
+                "Don't panic just because the caller does"
+            },
+            "Line 08 — do not answer.");
+
         public List<EmergencyCall> GenerateCalls()
         {
             return new List<EmergencyCall>
