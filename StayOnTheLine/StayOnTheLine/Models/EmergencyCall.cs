@@ -37,6 +37,10 @@ namespace StayOnTheLine.Models
 
         // Game Logic State
         public CallStage Stage { get; set; } = CallStage.Ringing;
+        public int PanicPercentage { get; set; } = 30;
+        public bool IdentityVerified { get; set; } = false;
+        public string DisplayName => IdentityVerified ? CallerName : "[ UNIDENTIFIED CALLER ]";
+        public string DisplayLocation => AddressVerified ? Location : "[ UNCONFIRMED / TRACING ]";
         public bool RequiresUnit { get; set; } = false;
         public bool HasDiscrepancy { get; set; } = false;
         public bool DiscrepancyFlagged { get; set; } = false;
