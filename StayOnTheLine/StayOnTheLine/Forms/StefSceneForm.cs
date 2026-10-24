@@ -198,7 +198,7 @@ namespace StayOnTheLine.Forms
 
             bool stefTyping = next.Sender == ChatSender.Stef;
             _messenger.Response.ShowWaiting(next.Channel == ChatChannel.Room ? "SOMEONE IS AT YOUR DESK"
-                : stefTyping ? "STEF IS TYPING" : "TRANSMITTING");
+                : stefTyping ? "STEFF IS TYPING" : "TRANSMITTING");
             _messenger.Thread.SetTyping(stefTyping);
 
             _pump.Interval = Math.Max(1, DelayBefore(next) + _extraDelay);

@@ -4,8 +4,8 @@ namespace StayOnTheLine.Forms
 {
     /// <summary>
     /// OOP Principle: ENCAPSULATION
-    /// In-world replacement for Windows message boxes: a parchment memo that matches
-    /// the operator archive dialogs, with an optional cancel choice.
+    /// In-world replacement for Windows message boxes (e.g. the Night Desk Personnel Ledger):
+    /// a black notice with a double light rule, like the dialogue boxes, with an optional cancel choice.
     /// </summary>
     public class ParchmentNoticeDialog : Form
     {
@@ -43,10 +43,17 @@ namespace StayOnTheLine.Forms
             _pnlParchment = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.FromArgb(218, 208, 185),
-                BackgroundImageLayout = ImageLayout.Stretch
+                BackColor = Color.FromArgb(10, 10, 10)
             };
-            LoadParchment();
+            _pnlParchment.Paint += (s, e) =>
+            {
+                // Double light rule, same as the in-room dialogue boxes
+                int W = _pnlParchment.Width, H = _pnlParchment.Height;
+                using var outer = new Pen(Color.FromArgb(225, 255, 255, 255), 1.5f);
+                using var inner = new Pen(Color.FromArgb(110, 255, 255, 255), 1f);
+                e.Graphics.DrawRectangle(outer, 3, 3, W - 7, H - 7);
+                e.Graphics.DrawRectangle(inner, 9, 9, W - 19, H - 19);
+            };
 
             int textW = DesignW - EdgeMargin * 2;
 
@@ -55,7 +62,7 @@ namespace StayOnTheLine.Forms
                 Text = header,
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(120, 32, 20),
+                ForeColor = Color.FromArgb(214, 88, 70),
                 Font = FontManager.GetSmallCapsFont(10.5F, FontStyle.Bold),
                 Location = new Point(EdgeMargin, 52)
             };
@@ -64,41 +71,41 @@ namespace StayOnTheLine.Forms
             {
                 Text = "✕",
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(40, 25, 12),
+                ForeColor = Color.FromArgb(190, 190, 186),
                 Font = new Font("Segoe UI Symbol", 16F, FontStyle.Bold, GraphicsUnit.Point),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand,
                 Bounds = new Rectangle(DesignW - EdgeMargin - 40, 42, 40, 38)
             };
             _lblClose.Click += (s, e) => Finish(DialogResult.Cancel);
-            _lblClose.MouseEnter += (s, e) => _lblClose.ForeColor = Color.FromArgb(190, 20, 20);
-            _lblClose.MouseLeave += (s, e) => _lblClose.ForeColor = Color.FromArgb(40, 25, 12);
+            _lblClose.MouseEnter += (s, e) => _lblClose.ForeColor = Color.FromArgb(230, 80, 64);
+            _lblClose.MouseLeave += (s, e) => _lblClose.ForeColor = Color.FromArgb(190, 190, 186);
 
             var lblTitle = new Label
             {
                 Text = title,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(16, 10, 4),
+                ForeColor = Color.FromArgb(242, 238, 230),
                 Font = FontManager.GetSmallCapsFont(22F, FontStyle.Bold),
                 Bounds = new Rectangle(EdgeMargin - 3, 82, textW, 44),
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true
             };
 
-            var bodyFont = FontManager.GetItalicFont(12.5F);
+            var bodyFont = FontManager.GetSmallCapsFont(12.5F);
             // Measure narrower than the label and pad generously: the dialog is rescaled afterwards,
             // and rounded font sizes can push the last word onto a new line
             int bodyH = TextRenderer.MeasureText(body, bodyFont, new Size(textW - 60, int.MaxValue), TextFormatFlags.WordBreak).Height + 44;
             var pnlCard = new Panel
             {
-                BackColor = Color.FromArgb(236, 226, 204),
+                BackColor = Color.FromArgb(22, 22, 22),
                 Bounds = new Rectangle(EdgeMargin, 136, textW, bodyH)
             };
             var lblBody = new Label
             {
                 Text = body,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(34, 24, 14),
+                ForeColor = Color.FromArgb(222, 216, 206),
                 Font = bodyFont,
                 Bounds = new Rectangle(18, 14, textW - 28, bodyH - 20)
             };
@@ -108,9 +115,9 @@ namespace StayOnTheLine.Forms
                 var rect = pnlCard.ClientRectangle;
                 rect.Width -= 1;
                 rect.Height -= 1;
-                using var pen = new Pen(Color.FromArgb(155, 130, 98), 1);
+                using var pen = new Pen(Color.FromArgb(70, 70, 70), 1);
                 e.Graphics.DrawRectangle(pen, rect);
-                using var spine = new SolidBrush(_isWarning ? Color.FromArgb(120, 32, 20) : Color.FromArgb(60, 90, 50));
+                using var spine = new SolidBrush(_isWarning ? Color.FromArgb(170, 44, 30) : Color.FromArgb(200, 200, 196));
                 e.Graphics.FillRectangle(spine, 0, 0, 5, pnlCard.Height);
             };
 
@@ -162,13 +169,13 @@ namespace StayOnTheLine.Forms
         private Label MakeButton(string text, bool primary)
         {
             Color bg = primary
-                ? (_isWarning ? Color.FromArgb(120, 32, 20) : Color.FromArgb(46, 34, 22))
-                : Color.FromArgb(232, 222, 200);
+                ? (_isWarning ? Color.FromArgb(120, 32, 20) : Color.FromArgb(236, 232, 224))
+                : Color.FromArgb(18, 18, 18);
             Color bgHover = primary
-                ? (_isWarning ? Color.FromArgb(160, 38, 24) : Color.FromArgb(70, 52, 32))
-                : Color.FromArgb(248, 240, 222);
-            Color fg = primary ? Color.FromArgb(250, 244, 230) : Color.FromArgb(35, 22, 12);
-            Color fgHover = primary ? Color.White : Color.FromArgb(10, 5, 2);
+                ? (_isWarning ? Color.FromArgb(160, 38, 24) : Color.White)
+                : Color.FromArgb(52, 52, 52);
+            Color fg = primary ? (_isWarning ? Color.FromArgb(250, 244, 230) : Color.FromArgb(14, 14, 14)) : Color.FromArgb(220, 216, 208);
+            Color fgHover = primary ? (_isWarning ? Color.White : Color.Black) : Color.White;
 
             var btn = new Label
             {
@@ -192,28 +199,6 @@ namespace StayOnTheLine.Forms
                 btn.ForeColor = fg;
             };
             return btn;
-        }
-
-        private void LoadParchment()
-        {
-            try
-            {
-                foreach (var name in new[] { "parchment_modal_bg.png", "creategame_bg.png" })
-                {
-                    string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", name);
-                    if (!File.Exists(path))
-                        path = Path.Combine(Directory.GetCurrentDirectory(), "Assets", name);
-                    if (File.Exists(path))
-                    {
-                        _pnlParchment.BackgroundImage = Image.FromFile(path);
-                        return;
-                    }
-                }
-            }
-            catch
-            {
-                // Keep the flat parchment colour
-            }
         }
 
         private void Finish(DialogResult result)

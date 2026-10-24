@@ -39,7 +39,7 @@ namespace StayOnTheLine.Systems.Dialogue
             ClockStart = new TimeSpan(1, 50, 0),
             SeenFlag = FlagSceneSeen,
             EndTitle = "THREAD STILL OPEN",
-            EndBody = "Stef's line stays active in the background. Save a copy of the log before you return to the queue.",
+            EndBody = "Steff's line stays active in the background. Save a copy of the log before you return to the queue.",
             EndButton = "RETURN TO QUEUE",
             EndStatus = "CONNECTION ACTIVE"
         };
@@ -51,7 +51,7 @@ namespace StayOnTheLine.Systems.Dialogue
             ClockStart = new TimeSpan(2, 56, 0),
             SeenFlag = FlagEndThreadSeen,
             EndTitle = "USER UNAVAILABLE",
-            EndBody = "The records terminal can't reach Stef. Save a copy of what's left before you finish the shift.",
+            EndBody = "The records terminal can't reach Steff. Save a copy of what's left before you finish the shift.",
             EndButton = "BACK TO THE DESK",
             EndStatus = null
         };
@@ -98,7 +98,7 @@ namespace StayOnTheLine.Systems.Dialogue
                         Sys("AUDIT LOG SHARED BY S. // RECORDS ARCHIVE") with { Cue = SceneCue.AuditNotification })
                     .Requires(new PlayerAction(
                         "PLAYER ACTION",
-                        "Stef has linked the altered records. Open the audit log to review them.",
+                        "Steff has linked the altered records. Open the audit log to review them.",
                         "OPEN AUDIT LOG",
                         "auditOpened") { EvidenceFlag = FlagOpenedAuditLog, Cue = SceneCue.OpenAuditLog }),
 
@@ -165,7 +165,7 @@ namespace StayOnTheLine.Systems.Dialogue
                 new DialogueNode("charmSilent",
                         Charm("Okay, then.", "charm_default"),
                         Room("[Charm pauses beside the console.]"),
-                        Charm("Stef bothering you with her paperwork again?", "charm_serious"),
+                        Charm("Steff bothering you with her paperwork again?", "charm_serious"),
                         Room("[Charm glances at the closed audit log.]"),
                         Charm("Don't let those old records get to you. The system's always been a mess.", "charm_smile"))
                     .Then("charmLeaves"),
@@ -190,13 +190,13 @@ namespace StayOnTheLine.Systems.Dialogue
                         Narration("[A new message appears on the records terminal.]"),
                         Stef("I found something else.", "stef_anxious"),
                         Stef("The edits aren't random. Someone is using an authorized account.", "stef_suspicious"))
-                    .Choice("Ask Stef to identify the account.", "identify",
+                    .Choice("Ask Steff to identify the account.", "identify",
                         Player("Can you identify which account is responsible?"),
                         FlagAskedToIdentify)
-                    .Choice("Ask Stef to preserve the audit log.", "preserve",
+                    .Choice("Ask Steff to preserve the audit log.", "preserve",
                         Player("Can you preserve the audit log before anything else gets changed?"),
                         FlagAskedToPreserve)
-                    .Choice("Tell Stef to stop investigating until the records can be reviewed officially.", "stop",
+                    .Choice("Tell Steff to stop investigating until the records can be reviewed officially.", "stop",
                         Player("Stop investigating for now. We should let the records be reviewed officially."),
                         FlagToldStefToStop),
 
@@ -238,7 +238,7 @@ namespace StayOnTheLine.Systems.Dialogue
                         Room("[She places a cup beside the keyboard.]"),
                         Charm("You should take a break when you can. You can't help anyone if you're too tired to think.", "charm_smile"),
                         Room("[Charm glances at the text terminal.]"),
-                        Charm("Stef still working on those records?", "charm_serious"),
+                        Charm("Steff still working on those records?", "charm_serious"),
                         Room("[You look at her.]"),
                         Charm("What? I just asked.", "charm_smile"),
                         Room("[Charm returns to her console.]") with { Cue = SceneCue.CharmLeaves })

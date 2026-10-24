@@ -29,7 +29,7 @@ namespace StayOnTheLine.Controls.Messenger
         public ResponsePanel Response { get; } = new();
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public string ContactName { get; set; } = "Stef";
+        public string ContactName { get; set; } = "Steff";
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public string ContactRole { get; set; } = "Records Archive";
 

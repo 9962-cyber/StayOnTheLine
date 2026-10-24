@@ -214,7 +214,7 @@ namespace StayOnTheLine.Controls.Messenger
         private float _phase;
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public string Label { get; set; } = "Stef is typing";
+        public string Label { get; set; } = "Steff is typing";
 
         public TypingIndicatorEntry() : base(null) { }
 

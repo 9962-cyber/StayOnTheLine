@@ -33,7 +33,7 @@ namespace StayOnTheLine.Models.Dialogue
 
         public string SpeakerName => Sender switch
         {
-            ChatSender.Stef => "STEF",
+            ChatSender.Stef => "STEFF",
             ChatSender.Player => "YOU",
             ChatSender.Charm => "CHARM",
             ChatSender.System => "SYSTEM",

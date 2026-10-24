@@ -34,8 +34,8 @@ namespace StayOnTheLine.Systems
             {
                 new BriefingSceneLine("", "[Another night. Another shift.]"),
                 new BriefingSceneLine("", "[{operator} signs in at Terminal 04. The fluorescent lights hum overhead, and the CRT monitors flicker awake.]"),
-                new BriefingSceneLine("CHARMEE", "Another day, another shift, huh?", "charm_smile", "NEIGHBORING CONSOLE"),
-                new BriefingSceneLine("CHARMEE", "Read the briefing before you clock in. We've only got two units tonight.", "charm_default", "NEIGHBORING CONSOLE")
+                new BriefingSceneLine("CHARM", "Another day, another shift, huh?", "charm_smile", "NEIGHBORING CONSOLE"),
+                new BriefingSceneLine("CHARM", "Read the briefing before you clock in. We've only got two units tonight.", "charm_default", "NEIGHBORING CONSOLE")
             }
         };
 

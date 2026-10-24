@@ -163,20 +163,23 @@ namespace StayOnTheLine.Forms
             g.DrawString("MUNICIPAL EMERGENCY SERVICES · FORM 08", tagFont, muted, left.X, left.Y);
             g.DrawString("Shift Briefing", titleFont, ink, left.X - 4 * s, left.Y + 30 * s);
 
-            float y = left.Y + 190 * s;
+            float y = left.Y + 150 * s;
             float valueX = left.X + 175 * s;
-            g.DrawString("DISPATCHER 04", tagFont, muted, valueX, y);
-            using (var nameFont = FontManager.GetSmallCapsFont(30f * s))
-                g.DrawString(Profile.OperatorName, nameFont, ink, new RectangleF(valueX - 4 * s, y + 22 * s, left.Right - valueX, 56 * s));
-            using (var roleFont = FontManager.GetSmallCapsFont(10f * s))
-                g.DrawString("Probationary operator", roleFont, muted, valueX, y + 82 * s);
+            g.DrawString("DISPATCHER 04", tagFont, muted, left.X, y);
+            using (var nameFont = FontManager.GetSmallCapsFont(38f * s))
+                g.DrawString(Profile.OperatorName, nameFont, ink, new RectangleF(left.X - 4 * s, y + 20 * s, left.Width, 70 * s));
+            using (var roleFont = FontManager.GetSmallCapsFont(11f * s))
+                g.DrawString("Probationary operator · Night desk", roleFont, muted, left.X, y + 92 * s);
+            g.DrawLine(rule, left.X, y + 128 * s, left.Right - 10 * s, y + 128 * s);
 
-            y += 175 * s;
+            y += 160 * s;
             var rows = new[]
             {
                 ("SHIFT", $"{briefing.ShiftLabel} / {briefing.Hours}"),
                 ("UNITS", $"{Scenario.InitialUnits:D2} available"),
-                ("EXPECTED", $"{expectedCalls:D2} calls")
+                ("EXPECTED", $"{expectedCalls:D2} calls"),
+                ("TERMINAL", "04 · Night desk"),
+                ("SUPERVISOR", System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(Scenario.SupervisorName.ToLowerInvariant()))
             };
             using (var valueFont = FontManager.GetSmallCapsFont(19f * s))
             {
@@ -198,7 +201,8 @@ namespace StayOnTheLine.Forms
             {
                 for (int i = 0; i < briefing.Procedure.Count; i++)
                 {
-                    g.DrawString((i + 1).ToString("D2"), tagFont, muted, right.X, stepY + 6 * s);
+                    using (var numFont = FontManager.GetSmallCapsFont(14f * s, FontStyle.Bold))
+                        g.DrawString((i + 1).ToString("D2"), numFont, muted, right.X, stepY + 1 * s);
                     var box = new RectangleF(right.X + 58 * s, stepY, right.Width - 58 * s, 96 * s);
                     g.DrawString(briefing.Procedure[i], stepFont, ink, box);
                     float used = g.MeasureString(briefing.Procedure[i], stepFont, (int)box.Width).Height;
@@ -207,10 +211,10 @@ namespace StayOnTheLine.Forms
             }
 
             // Handwritten margin note, in red, tilted like it was scribbled in a hurry
-            using (var noteFont = FontManager.GetSmallCapsFont(16.5f * s))
+            using (var noteFont = FontManager.GetSmallCapsFont(19f * s))
             using (var noteBrush = new SolidBrush(BookNote))
             {
-                var noteBox = new RectangleF(right.X + 20 * s, Math.Max(stepY + 34 * s, right.Y + 470 * s), right.Width - 50 * s, 220 * s);
+                var noteBox = new RectangleF(right.X + 20 * s, Math.Max(stepY + 40 * s, right.Y + 500 * s), right.Width - 40 * s, 220 * s);
                 var state = g.Save();
                 g.TranslateTransform(noteBox.X, noteBox.Y);
                 g.RotateTransform(-5f);

@@ -2516,7 +2516,7 @@ namespace StayOnTheLine.Forms
                     {
                         string body = line.Substring(line.IndexOf(':') + 1).Trim();
                         _charmQueuedLines.Add(body);
-                        charm.Add(("CHARMEE", body));
+                        charm.Add(("CHARM", body));
                     }
                     else
                     {
@@ -3349,7 +3349,7 @@ namespace StayOnTheLine.Forms
                 int gridX = contentX;
                 int gridY = currY;
                 int gridW = contentW;
-                int gridH = (int)(138 * scale);
+                int gridH = (int)(158 * scale);
                 int colW = gridW / 2;
                 int rowH = gridH / 3;
 
@@ -3371,11 +3371,11 @@ namespace StayOnTheLine.Forms
                 void DrawCell(int r, int c, string label, string val)
                 {
                     int cx = gridX + c * colW + (int)(12 * scale);
-                    int cy = gridY + r * rowH + (int)(5 * scale);
+                    int cy = gridY + r * rowH + (int)(6 * scale);
                     var rLabel = new Rectangle(cx, cy, colW - (int)(24 * scale), (int)(16 * scale));
-                    var rVal = new Rectangle(cx, cy + (int)(17 * scale), colW - (int)(24 * scale), (int)(22 * scale));
-                    TextRenderer.DrawText(g, label, fontMetricLabel, rLabel, labelCol, TextFormatFlags.Left);
-                    TextRenderer.DrawText(g, val, fontMetricVal, rVal, valCol, TextFormatFlags.Left);
+                    var rVal = new Rectangle(cx, cy + (int)(17 * scale), colW - (int)(24 * scale), rowH - (int)(25 * scale));
+                    TextRenderer.DrawText(g, label, fontMetricLabel, rLabel, labelCol, TextFormatFlags.Left | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(g, val, fontMetricVal, rVal, valCol, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
                 }
 
                 int totalClues = 0;
@@ -3429,11 +3429,11 @@ namespace StayOnTheLine.Forms
                 currY += (int)(22 * scale);
 
                 // Supervisor Note Body
-                using var fontNoteBody = FontManager.GetItalicFont(12.5f * scale);
+                using var fontNoteBody = FontManager.GetSmallCapsFont(11.5f * scale);
                 var noteBodyCol = Color.FromArgb(34, 26, 20);
                 int noteW = contentW - stampW - (int)(16 * scale);
                 string supervisorNote = Scenario.GetDebriefMessage(State);
-                int noteH = Math.Max((int)(78 * scale), (int)Math.Ceiling(g.MeasureString(supervisorNote, fontNoteBody, noteW).Height) + (int)(4 * scale));
+                int noteH = Math.Max((int)(56 * scale), (int)Math.Ceiling(g.MeasureString(supervisorNote, fontNoteBody, noteW).Height) + (int)(4 * scale));
                 var rNoteBody = new Rectangle(contentX, currY, noteW, noteH);
                 using var noteBrush = new SolidBrush(noteBodyCol);
                 using var noteSf = new StringFormat { Trimming = StringTrimming.Word };
@@ -3444,7 +3444,7 @@ namespace StayOnTheLine.Forms
                 // Incident Disposition Ledger (Utilizes paper body with atmospheric log details)
                 using var fontLedgerHead = FontManager.GetSmallCapsFont(10.5f * scale, FontStyle.Bold);
                 var rLedgerHead = new Rectangle(contentX, currY, contentW, (int)(18 * scale));
-                TextRenderer.DrawText(g, "EMERGENCY TRUNK LOG & DISPOSITION SUMMARY", fontLedgerHead, rLedgerHead, Color.FromArgb(75, 62, 50), TextFormatFlags.Left);
+                TextRenderer.DrawText(g, "EMERGENCY TRUNK LOG & DISPOSITION SUMMARY", fontLedgerHead, rLedgerHead, Color.FromArgb(75, 62, 50), TextFormatFlags.Left | TextFormatFlags.NoPrefix);
                 currY += (int)(18 * scale);
 
                 using var divPen = new Pen(Color.FromArgb(160, 140, 120), 1.2f * scale);
@@ -3453,7 +3453,9 @@ namespace StayOnTheLine.Forms
 
                 using var fontLedgerRow = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Regular);
                 using var fontLedgerBold = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Bold);
-                int rowH2 = (int)(19 * scale);
+                using var fontLedgerPlace = FontManager.GetSmallCapsFont(8.5f * scale, FontStyle.Regular);
+                int rowH2 = (int)(30 * scale);
+                int lineH = (int)(16 * scale);
 
                 for (int i = 0; i < _calls.Count; i++)
                 {
@@ -3462,9 +3464,7 @@ namespace StayOnTheLine.Forms
                     var rRow = new Rectangle(contentX + (int)(4 * scale), ry, contentW - (int)(8 * scale), rowH2);
 
                     string place = c.IsRestricted ? "SOURCE CLASSIFIED" : c.AddressVerified ? c.Location : "LOCATION UNVERIFIED";
-                    string linePrefix = c.IsRestricted
-                        ? $"LINE {(i + 1):D2}: {c.CallerName}"
-                        : $"LINE {(i + 1):D2}: {c.CallerName} — {place}";
+                    string linePrefix = $"LINE {(i + 1):D2} · {c.CallerName}";
                     string lineOutcome;
                     Color outcomeCol;
 
@@ -3492,10 +3492,14 @@ namespace StayOnTheLine.Forms
                         outcomeCol = Color.FromArgb(160, 110, 30);
                     }
 
-                    int outcomeW = TextRenderer.MeasureText(lineOutcome, fontLedgerBold).Width;
-                    var rPrefix = new Rectangle(rRow.X, rRow.Y, Math.Max(10, rRow.Width - outcomeW - (int)(10 * scale)), rRow.Height);
-                    TextRenderer.DrawText(g, linePrefix, fontLedgerRow, rPrefix, Color.FromArgb(50, 42, 35), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-                    TextRenderer.DrawText(g, lineOutcome, fontLedgerBold, rRow, outcomeCol, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+                    const TextFormatFlags rowFlags = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis;
+                    int outcomeW = TextRenderer.MeasureText(lineOutcome, fontLedgerBold, Size.Empty, TextFormatFlags.NoPrefix).Width;
+                    var rTop = new Rectangle(rRow.X, rRow.Y, rRow.Width, lineH);
+                    var rPrefix = new Rectangle(rRow.X, rRow.Y, Math.Max(10, rRow.Width - outcomeW - (int)(10 * scale)), lineH);
+                    TextRenderer.DrawText(g, linePrefix, fontLedgerRow, rPrefix, Color.FromArgb(50, 42, 35), TextFormatFlags.Left | rowFlags);
+                    TextRenderer.DrawText(g, lineOutcome, fontLedgerBold, rTop, outcomeCol, TextFormatFlags.Right | rowFlags);
+                    var rPlace = new Rectangle(rRow.X + (int)(14 * scale), rRow.Y + lineH - (int)(2 * scale), rRow.Width - (int)(14 * scale), lineH);
+                    TextRenderer.DrawText(g, place, fontLedgerPlace, rPlace, Color.FromArgb(120, 104, 88), TextFormatFlags.Left | rowFlags);
                 }
 
                 currY += _calls.Count * rowH2 + (int)(8 * scale);
@@ -3504,9 +3508,9 @@ namespace StayOnTheLine.Forms
                 g.DrawLine(divPen, contentX, currY, contentX + contentW, currY);
                 currY += (int)(6 * scale);
 
-                using var fontNotice = FontManager.GetItalicFont(9f * scale);
-                var rNotice = new Rectangle(contentX, currY, (int)(contentW * 0.58f), (int)(34 * scale));
-                string noticeText = "NOTICE: Official property of Municipal Emergency Services.\nUnauthorized disclosure of audio logs is prohibited under Code 402.";
+                using var fontNotice = FontManager.GetSmallCapsFont(8f * scale);
+                var rNotice = new Rectangle(contentX, currY, (int)(contentW * 0.58f), (int)(46 * scale));
+                string noticeText = "NOTICE: Official property of Municipal Emergency Services. Disclosure prohibited under Code 402.";
                 using var noticeBrush = new SolidBrush(Color.FromArgb(115, 100, 85));
                 g.DrawString(noticeText, fontNotice, noticeBrush, rNotice);
 
@@ -3706,116 +3710,129 @@ namespace StayOnTheLine.Forms
             return y + size.Height;
         }
 
+        /// <summary>A muted label column (code / number) with wrapped text beside it; returns the Y below.</summary>
+        private static int DrawBookEntry(Graphics g, string label, string text, Font labelFont, Font textFont,
+            int x, int y, int labelW, int width, bool draw, Color? textColor = null)
+        {
+            if (draw)
+                TextRenderer.DrawText(g, label, labelFont, new Rectangle(x, y + 1, labelW, labelFont.Height + 4), BookInkSub, BookTextFlags);
+            return DrawBookText(g, text, textFont, textColor ?? BookInkDark, x + labelW, y, width - labelW, draw);
+        }
+
+        private static int DrawBookSection(Graphics g, string title, Font font, int x, int y, int width, float s, bool draw)
+        {
+            y = DrawBookText(g, title, font, BookInkDark, x, y, width, draw);
+            if (draw)
+            {
+                using var rule = new Pen(Color.FromArgb(120, 110, 90, 70), Math.Max(1f, 1.2f * s));
+                g.DrawLine(rule, x, y + 3 * s, x + width, y + 3 * s);
+            }
+            return y + (int)(12 * s);
+        }
+
         private static int DrawDirectiveLeftPage(Graphics g, Rectangle page, float s, bool draw)
         {
-            using var fontTitle = FontManager.GetSmallCapsFont(25f * s, FontStyle.Bold);
-            using var fontSub = FontManager.GetItalicFont(15f * s);
-            using var fontSection = FontManager.GetSmallCapsFont(18f * s, FontStyle.Bold);
-            using var fontBody = FontManager.GetSmallCapsFont(15.5f * s, FontStyle.Regular);
+            using var fontTitle = FontManager.GetSmallCapsFont(22f * s, FontStyle.Bold);
+            using var fontSub = FontManager.GetSmallCapsFont(11.5f * s);
+            using var fontSection = FontManager.GetSmallCapsFont(15f * s, FontStyle.Bold);
+            using var fontCode = FontManager.GetSmallCapsFont(13.5f * s, FontStyle.Bold);
+            using var fontBody = FontManager.GetSmallCapsFont(13.5f * s);
+            using var fontNote = FontManager.GetSmallCapsFont(12.5f * s);
 
-            int x = page.X, w = page.Width, indent = (int)(14 * s);
+            int x = page.X, w = page.Width;
             int y = page.Y;
 
-            y = DrawBookText(g, "MUNICIPAL DISPATCH PROTOCOLS", fontTitle, BookInkDark, x, y, w, draw);
-            y = DrawBookText(g, "Civil Defense Communications Branch · Field Reference Directive", fontSub, BookInkSub, x, y, w, draw);
-            y += (int)(22 * s);
+            y = DrawBookText(g, "Municipal Dispatch Protocols", fontTitle, BookInkDark, x, y, w, draw);
+            y = DrawBookText(g, "Civil Defense Communications Branch · Field Reference", fontSub, BookInkSub, x, y + (int)(2 * s), w, draw);
+            y += (int)(26 * s);
 
-            y = DrawBookText(g, "SECTION A: STANDARD RADIO 10-CODES", fontSection, BookInkDark, x, y, w, draw);
-            y += (int)(6 * s);
-            string[] codes = {
-                "10-04  Acknowledgment / Directive Received",
-                "10-07  Unit Out of Service (Mechanical / Transit)",
-                "10-14  Escort / Patrol Reinforcement Required",
-                "10-20  Transmit Exact Grid Coordinates / Location",
-                "10-33  Emergency Traffic Only (Channel Clearance)",
-                "10-99  Officer / Civilian Life-Threat Disturbance"
-            };
-            foreach (var code in codes)
+            y = DrawBookSection(g, "A · Standard radio 10-codes", fontSection, x, y, w, s, draw);
+            var codes = new (string Code, string Meaning)[]
             {
-                y = DrawBookText(g, code, fontBody, BookInkDark, x + indent, y, w - indent, draw);
-                y += (int)(5 * s);
-            }
-
-            y += (int)(20 * s);
-            y = DrawBookText(g, "SECTION B: PRECINCT SECTORS & DEPLOYMENT", fontSection, BookInkDark, x, y, w, draw);
-            y += (int)(6 * s);
-            string[] sectors = {
-                "SECTOR ALPHA  (West Residential / Bell St)  ·  Units 01, 02",
-                "SECTOR BETA  (Commercial Route 9 Corridor)  ·  Unit 03",
-                "SECTOR GAMMA  (Industrial Basin & River)  ·  Unit 04"
+                ("10-04", "Acknowledged / directive received"),
+                ("10-07", "Unit out of service"),
+                ("10-14", "Escort / patrol reinforcement required"),
+                ("10-20", "Transmit exact location"),
+                ("10-33", "Emergency traffic only"),
+                ("10-99", "Officer / civilian life-threat")
             };
-            foreach (var sec in sectors)
-            {
-                y = DrawBookText(g, sec, fontBody, BookInkDark, x + indent, y, w - indent, draw);
-                y += (int)(5 * s);
-            }
+            foreach (var (code, meaning) in codes)
+                y = DrawBookEntry(g, code, meaning, fontCode, fontBody, x, y, (int)(78 * s), w, draw) + (int)(6 * s);
 
-            y += (int)(20 * s);
-            y = DrawBookText(g, "PRIORITY DEPLOYMENT ORDER", fontSection, BookInkDark, x, y, w, draw);
-            y += (int)(4 * s);
-            y = DrawBookText(g, "Immediate unit deployment is authorized ONLY upon address and incident confirmation. False dispatches deplete limited night vehicles.",
-                fontSub, BookInkSub, x + indent, y, w - indent, draw);
+            y += (int)(18 * s);
+            y = DrawBookSection(g, "B · Precinct sectors", fontSection, x, y, w, s, draw);
+            var sectors = new (string Name, string Area)[]
+            {
+                ("Alpha", "West Residential / Bell St · Units 01, 02"),
+                ("Beta", "Commercial Route 9 Corridor · Unit 03"),
+                ("Gamma", "Industrial Basin & River · Unit 04")
+            };
+            foreach (var (name, area) in sectors)
+                y = DrawBookEntry(g, name, area, fontCode, fontBody, x, y, (int)(78 * s), w, draw) + (int)(6 * s);
+
+            y += (int)(18 * s);
+            y = DrawBookSection(g, "C · Priority deployment", fontSection, x, y, w, s, draw);
+            y = DrawBookText(g, "Deploy a unit ONLY once the address and the incident are confirmed. False dispatches use up the few night vehicles we have.",
+                fontNote, BookInkSub, x, y, w, draw);
             return y;
         }
 
         private int DrawDirectiveRightPage(Graphics g, Rectangle page, float s, bool draw)
         {
-            using var fontTitle = FontManager.GetSmallCapsFont(25f * s, FontStyle.Bold);
-            using var fontSub = FontManager.GetItalicFont(15f * s);
-            using var fontRule = FontManager.GetSmallCapsFont(16.5f * s, FontStyle.Bold);
-            using var fontRuleBody = FontManager.GetItalicFont(14.5f * s);
+            using var fontTitle = FontManager.GetSmallCapsFont(22f * s, FontStyle.Bold);
+            using var fontSub = FontManager.GetSmallCapsFont(11.5f * s);
+            using var fontNumber = FontManager.GetSmallCapsFont(13.5f * s, FontStyle.Bold);
+            using var fontRule = FontManager.GetSmallCapsFont(14.5f * s, FontStyle.Bold);
+            using var fontRuleBody = FontManager.GetSmallCapsFont(12.5f * s);
 
-            int x = page.X, w = page.Width, indent = (int)(14 * s);
+            int x = page.X, w = page.Width;
             int y = page.Y;
+            int numberW = (int)(46 * s);
 
-            y = DrawBookText(g, "NIGHT DESK ORDERS & MANDATES", fontTitle, BookInkDark, x, y, w, draw);
-            y = DrawBookText(g, $"Station Supervisor: {Scenario.SupervisorName} · Terminal 04 Directive", fontSub, BookInkSub, x, y, w, draw);
-            y += (int)(22 * s);
+            y = DrawBookText(g, "Night Desk Orders", fontTitle, BookInkDark, x, y, w, draw);
+            y = DrawBookText(g, $"Station supervisor: {Scenario.SupervisorName} · Terminal 04", fontSub, BookInkSub, x, y + (int)(2 * s), w, draw);
+            y += (int)(26 * s);
 
-            string[] rules = {
-                "RULE 01: IDENTITY & RESIDENCE VERIFICATION",
-                "Always confirm caller name and street address prior to unit deployment. Unverified dispatches count as protocol infractions.",
-                "RULE 02: ARCHIVE CROSS-EXAMINATION",
-                "Consult station log archives on all incoming lines. Check prior incident records and notes for recurring disturbances.",
-                "RULE 03: TRUNK LINE 08 BAN (CRITICAL WARNING)",
-                "Under NO circumstances may an operator answer, hold, or trace Trunk Line 08. That channel is sealed. Report any activity directly to your supervisor.",
-                "RULE 04: DISTRESS DE-ESCALATION",
-                "When telemetry indicates severe caller panic (>75%), maintain verbal reassurance protocol before issuing movement orders.",
-                "RULE 05: SHIFT QUARANTINE PROTOCOL",
-                "Do not discuss unconfirmed night anomalies or purged records with oncoming day shift operators. What occurs on night desk stays on night desk."
+            var rules = new (string Title, string Body, bool Critical)[]
+            {
+                ("Identity & residence", "Confirm the caller's name and street address before deploying a unit. Unverified dispatches count as infractions.", false),
+                ("Archive cross-check", "Check the station log archives on every incoming line for prior incidents and recurring disturbances.", false),
+                ("Trunk Line 08 is sealed", "Never answer, hold, or trace Line 08. Report any activity on it directly to your supervisor.", true),
+                ("Distress de-escalation", "When caller panic passes 75%, keep reassuring them before giving any movement orders.", false),
+                ("Shift quarantine", "Do not discuss unconfirmed night anomalies or purged records with the day shift. What happens on night desk stays on night desk.", false)
             };
 
-            for (int i = 0; i < rules.Length; i += 2)
+            for (int i = 0; i < rules.Length; i++)
             {
-                y = DrawBookText(g, rules[i], fontRule, BookInkDark, x, y, w, draw);
-                y += (int)(2 * s);
-                y = DrawBookText(g, rules[i + 1], fontRuleBody, BookInkSub, x + indent, y, w - indent, draw);
-                y += (int)(16 * s);
+                var (title, body, critical) = rules[i];
+                Color titleColor = critical ? Color.FromArgb(150, 34, 28) : BookInkDark;
+                y = DrawBookEntry(g, (i + 1).ToString("D2"), title, fontNumber, fontRule, x, y, numberW, w, draw, titleColor);
+                y = DrawBookText(g, body, fontRuleBody, BookInkSub, x + numberW, y + (int)(2 * s), w - numberW, draw);
+                y += (int)(14 * s);
             }
 
-            // Official verification stamp, sized to its text
-            y += (int)(8 * s);
-            using var fontStamp = FontManager.GetSmallCapsFont(14f * s, FontStyle.Bold);
-            string stampText = $"OFFICIAL DIRECTIVE — CIVIL DEFENSE // {Scenario.SupervisorName}";
+            // Official stamp, sized to its text so it never gets cut off
+            y += (int)(10 * s);
+            using var fontStamp = FontManager.GetSmallCapsFont(13f * s, FontStyle.Bold);
+            const string stampText = "OFFICIAL DIRECTIVE · CIVIL DEFENSE";
             var stampSize = TextRenderer.MeasureText(g, stampText, fontStamp, Size.Empty, TextFormatFlags.NoPrefix);
-            int stampW = Math.Min(w, stampSize.Width + (int)(28 * s));
+            int stampW = Math.Min(w, stampSize.Width + (int)(30 * s));
             int stampH = stampSize.Height + (int)(14 * s);
             if (draw)
             {
-                var stampRect = new Rectangle(x + (w - stampW) / 2, y, stampW, stampH);
+                var stampRect = new Rectangle(x + w - stampW, y, stampW, stampH);
                 var state = g.Save();
                 g.TranslateTransform(stampRect.X + stampW / 2f, stampRect.Y + stampH / 2f);
-                g.RotateTransform(-2f);
+                g.RotateTransform(-3f);
                 var local = new Rectangle(-stampW / 2, -stampH / 2, stampW, stampH);
-                using var stampPen = new Pen(Color.FromArgb(160, 40, 40), Math.Max(1.5f, 2f * s));
+                using var stampPen = new Pen(Color.FromArgb(170, 160, 40, 40), Math.Max(1.5f, 2f * s));
                 g.DrawRectangle(stampPen, local);
                 // GDI+ DrawString honours the rotation (TextRenderer ignores world transforms)
-                using var stampBrush = new SolidBrush(Color.FromArgb(160, 40, 40));
+                using var stampBrush = new SolidBrush(Color.FromArgb(185, 160, 40, 40));
                 using var stampFormat = new StringFormat
                 {
                     Alignment = StringAlignment.Center,
                     LineAlignment = StringAlignment.Center,
-                    Trimming = StringTrimming.EllipsisCharacter,
                     FormatFlags = StringFormatFlags.NoWrap
                 };
                 g.DrawString(stampText, fontStamp, stampBrush, local, stampFormat);
@@ -3872,8 +3889,8 @@ namespace StayOnTheLine.Forms
                     float scale = (float)bookRect.Width / 1920f;
 
                     // Pages inside the open binder, in 1920x1080 book-image units (inside the paper margins)
-                    var leftPage = new Rectangle(bookRect.X + (int)(380 * scale), bookRect.Y + (int)(150 * scale), (int)(580 * scale), (int)(770 * scale));
-                    var rightPage = new Rectangle(bookRect.X + (int)(1045 * scale), bookRect.Y + (int)(150 * scale), (int)(560 * scale), (int)(770 * scale));
+                    var leftPage = new Rectangle(bookRect.X + (int)(400 * scale), bookRect.Y + (int)(130 * scale), (int)(540 * scale), (int)(800 * scale));
+                    var rightPage = new Rectangle(bookRect.X + (int)(1090 * scale), bookRect.Y + (int)(130 * scale), (int)(530 * scale), (int)(800 * scale));
 
                     // Lay the pages out at a comfortable reading size, shrinking only if a page would overflow
                     float textScale = 1f;

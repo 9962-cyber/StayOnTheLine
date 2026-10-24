@@ -51,7 +51,7 @@ namespace StayOnTheLine.Controls.Messenger
             _anim.Start();
         }
 
-        public void SetTyping(bool visible, string label = "Stef is typing")
+        public void SetTyping(bool visible, string label = "Steff is typing")
         {
             if (_typing.Visible == visible && _typing.Label == label) return;
             _typing.Label = label;
