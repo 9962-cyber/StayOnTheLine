@@ -3710,8 +3710,8 @@ namespace StayOnTheLine.Forms
             int x = page.X, w = page.Width;
             int y = page.Y;
 
-            y = DrawBookText(g, "Municipal Dispatch Protocols", fontTitle, BookInkDark, x, y, w, draw);
-            y = DrawBookText(g, "Civil Defense Communications Branch · Field Reference", fontSub, BookInkSub, x, y + (int)(2 * s), w, draw);
+            y = DrawBookText(g, "Dispatch Protocols", fontTitle, BookInkDark, x, y, w, draw);
+            y = DrawBookText(g, "Night Watch Emergency Services · Field Reference", fontSub, BookInkSub, x, y + (int)(2 * s), w, draw);
             y += (int)(26 * s);
 
             y = DrawBookSection(g, "A · Standard radio 10-codes", fontSection, x, y, w, s, draw);
