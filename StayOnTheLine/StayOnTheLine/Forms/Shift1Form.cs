@@ -243,11 +243,11 @@ namespace StayOnTheLine.Forms
             _imgComputerDesk = TryLoadImage("computerscreenforcall.png") ?? TryLoadImage("computer_desk_ui.jpg");
 
             // 3. Shift Directive / Briefing Manual
-            _imgShiftBriefingBook = TryLoadImage("shiftbriefing_book.png");
+            _imgShiftBriefingBook = TryLoadImage("briefing_book.png");
 
             // 4. End of Shift Background & Photorealistic Clipboard Board
             _imgEndShiftBg = TryLoadImage("endshiftsummary_bg.png");
-            _imgEndShiftBoard = TryLoadImage("endshiftboard.png");
+            _imgEndShiftBoard = TryLoadImage("endshift_clipboard.png");
         }
 
         private void InitializeCustomUI()
@@ -394,7 +394,7 @@ namespace StayOnTheLine.Forms
                     this,
                     "HANDWRITTEN NOTE // TAPED TO CONSOLE",
                     "Line 08 — Do not answer.",
-                    "\"Do not answer. Do not trace. That channel has been dead for twenty years.\"\n\n— Shift Supervisor Krisha Narciso",
+                    "\"Do not answer. Do not trace. That channel has been dead for twenty years.\"\n\n— Shift Supervisor Krisha",
                     "PUT IT BACK");
             };
             Controls.Add(_lblDeskStickyNote);
@@ -1211,6 +1211,7 @@ namespace StayOnTheLine.Forms
 
             ApplyResponsiveLayout();
             UpdateTutorialGuidance();
+            SyncCallSceneChoices();
         }
 
         private void UpdateDynamicChoices()
@@ -2118,6 +2119,10 @@ namespace StayOnTheLine.Forms
             {
                 AddShift3Choices(call, choices);
             }
+            else if (Scenario.ShiftNumber == 4) // SHIFT 4 – see ShiftPlayForm.Shift4.cs
+            {
+                AddShift4Choices(call, choices);
+            }
 
             SetDynamicActionChoices(choices);
             UpdatePhoneRing();
@@ -2134,6 +2139,7 @@ namespace StayOnTheLine.Forms
             bool ringing = !reportOpen && !call.IsRestricted &&
                            call.Stage == CallStage.Ringing && call.Status != CallQueueStatus.Resolved &&
                            !Shift3BriefingPending && // Shift 3: the first call rings after the briefing
+                           !Shift4PreCallPending &&  // Shift 4: ...and after the address-database checks
                            !ShiftBookOpen;           // nothing rings until the player clocks in
 
             if (ringing) AudioManager.Instance.StartPhoneRing();
@@ -2632,6 +2638,13 @@ namespace StayOnTheLine.Forms
             _scriptSegments.Clear();
             _charmQueuedLines.Clear();
             _charmDialogue.Clear();
+
+            // Chloe's calls play as a phone-call scene (see ShiftPlayForm.CallScene.cs)
+            if (ShouldRouteToCallScene())
+            {
+                PlayInCallScene(text);
+                return;
+            }
 
             foreach (var seg in SplitScript(text, charmAtConsole)) _scriptSegments.Enqueue(seg);
 
@@ -3256,11 +3269,11 @@ namespace StayOnTheLine.Forms
                     // Draw the photorealistic wooden clipboard directly under the overhead light
                     g.DrawImage(_imgEndShiftBoard, offX, offY, drawW, drawH);
 
-                    // Parchment area inside the 1920x1080 board asset (Left=640, Width=600, Top=225, Bottom=980)
-                    paperX = (int)(offX + 640 * scale);
-                    paperW = (int)(600 * scale);
-                    paperTop = (int)(offY + 225 * scale);
-                    paperBottom = (int)(offY + 980 * scale);
+                    // Paper area inside the 1920x1080 clipboard asset, below the clip (Left=702, Width=556, Top=232, Bottom=950)
+                    paperX = (int)(offX + 702 * scale);
+                    paperW = (int)(556 * scale);
+                    paperTop = (int)(offY + 232 * scale);
+                    paperBottom = (int)(offY + 950 * scale);
                 }
                 else
                 {
@@ -3331,7 +3344,7 @@ namespace StayOnTheLine.Forms
                     new Rectangle(contentX, currY, contentW, (int)(20 * scale)), inkMuted, TextFormatFlags.HorizontalCenter | oneLine);
                 currY += (int)(20 * scale);
 
-                using var fontTitle = FontManager.GetSmallCapsFont(23f * scale, FontStyle.Bold);
+                using var fontTitle = FontManager.GetSmallCapsFont(20f * scale, FontStyle.Bold);
                 TextRenderer.DrawText(g, "END OF SHIFT REPORT", fontTitle,
                     new Rectangle(contentX, currY, contentW, (int)(40 * scale)), inkDark, TextFormatFlags.HorizontalCenter | oneLine);
                 currY += (int)(40 * scale);
@@ -3349,7 +3362,7 @@ namespace StayOnTheLine.Forms
                 // Stats: 3 x 2, open layout with hairlines
                 int totalClues = 0;
                 foreach (var c in _calls) { if (c.HasDiscrepancy) totalClues++; }
-                if (totalClues == 0) totalClues = 1;
+                totalClues = Math.Max(1, Math.Max(totalClues, State.CluesFound)); // evidence can also come from outside a call (e.g. Shift 4's audio log)
 
                 var stats = new (string Label, string Value)[]
                 {
@@ -3474,8 +3487,8 @@ namespace StayOnTheLine.Forms
                 }
 
                 // Footer pinned just above the buttons
-                int footerBtnH = Math.Clamp((int)(44 * scale), 38, 48);
-                int footerY = paperBottom - footerBtnH - (int)(16 * scale) - (int)(50 * scale);
+                int footerBtnH = Math.Clamp((int)(40 * scale), 34, 44);
+                int footerY = paperBottom - footerBtnH - (int)(12 * scale) - (int)(48 * scale);
                 g.DrawLine(rulePen, contentX, footerY, contentX + contentW, footerY);
                 footerY += (int)(8 * scale);
 
@@ -3517,8 +3530,8 @@ namespace StayOnTheLine.Forms
                 e.Graphics.DrawRectangle(pen, rc);
 
                 float scale = (float)_pnlDebriefModal.Height / 1080f;
-                using var font = FontManager.GetSmallCapsFont(11f * scale, FontStyle.Bold);
-                using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                using var font = FontManager.GetSmallCapsFont(10f * scale, FontStyle.Bold);
+                using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
                 using var textBrush = new SolidBrush(isHovered ? Color.FromArgb(245, 235, 215) : Color.FromArgb(28, 24, 20));
                 e.Graphics.DrawString("[ COMPLETE SHIFT ]", font, textBrush, rc, sf);
             };
@@ -3534,8 +3547,8 @@ namespace StayOnTheLine.Forms
                 e.Graphics.DrawRectangle(pen, rc);
 
                 float scale = (float)_pnlDebriefModal.Height / 1080f;
-                using var font = FontManager.GetSmallCapsFont(10.5f * scale, FontStyle.Bold);
-                using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                using var font = FontManager.GetSmallCapsFont(9.5f * scale, FontStyle.Bold);
+                using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
                 using var textBrush = new SolidBrush(isHovered ? Color.FromArgb(245, 235, 215) : Color.FromArgb(65, 55, 45));
                 e.Graphics.DrawString("[ RETURN TO TERMINAL ]", font, textBrush, rc, sf);
             };
@@ -3554,9 +3567,9 @@ namespace StayOnTheLine.Forms
                 int paperX, paperW, paperBottom;
                 if (_imgEndShiftBoard != null)
                 {
-                    paperX = (int)(offX + 640 * scale);
-                    paperW = (int)(600 * scale);
-                    paperBottom = (int)(offY + 980 * scale);
+                    paperX = (int)(offX + 702 * scale);
+                    paperW = (int)(556 * scale);
+                    paperBottom = (int)(offY + 950 * scale);
                 }
                 else
                 {
@@ -3569,12 +3582,12 @@ namespace StayOnTheLine.Forms
                     paperBottom = clipY + clipH - 24;
                 }
 
-                int contentX = paperX + (int)(24 * scale);
-                int contentW = paperW - (int)(48 * scale);
-                int gap = (int)(14 * scale);
+                int contentX = paperX + (int)(20 * scale);
+                int contentW = paperW - (int)(40 * scale);
+                int gap = (int)(10 * scale);
                 int btnW = (contentW - gap) / 2;
-                int btnH = Math.Clamp((int)(44 * scale), 38, 48);
-                int btnY = paperBottom - btnH - (int)(16 * scale);
+                int btnH = Math.Clamp((int)(40 * scale), 34, 44);
+                int btnY = paperBottom - btnH - (int)(12 * scale);
 
                 btnComplete.Location = new Point(contentX, btnY);
                 btnComplete.Size = new Size(btnW, btnH);
@@ -3851,20 +3864,25 @@ namespace StayOnTheLine.Forms
 
                 if (_imgShiftBriefingBook != null)
                 {
-                    var bookRect = GetContainFitRect(_imgShiftBriefingBook, rc);
+                    // Same size as the Shift Briefing book: 85% of the screen
+                    var bookArea = Rectangle.Inflate(rc, -(int)(rc.Width * 0.075f), -(int)(rc.Height * 0.075f));
+                    var bookRect = GetContainFitRect(_imgShiftBriefingBook, bookArea);
                     g.DrawImage(_imgShiftBriefingBook, bookRect);
 
                     float scale = (float)bookRect.Width / 1920f;
 
                     // Pages inside the open binder, in 1920x1080 book-image units (inside the paper margins)
-                    var leftPage = new Rectangle(bookRect.X + (int)(400 * scale), bookRect.Y + (int)(130 * scale), (int)(540 * scale), (int)(800 * scale));
-                    var rightPage = new Rectangle(bookRect.X + (int)(1090 * scale), bookRect.Y + (int)(130 * scale), (int)(530 * scale), (int)(800 * scale));
+                    var leftPage = new Rectangle(bookRect.X + (int)(430 * scale), bookRect.Y + (int)(115 * scale), (int)(505 * scale), (int)(820 * scale));
+                    var rightPage = new Rectangle(bookRect.X + (int)(1045 * scale), bookRect.Y + (int)(115 * scale), (int)(500 * scale), (int)(820 * scale));
 
                     // Lay the pages out at a comfortable reading size, shrinking only if a page would overflow
-                    float textScale = 1f;
+                    // Start large and step down to the biggest size that still fits both pages,
+                    // so the text fills the book instead of leaving empty space below it
+                    float textScale = 1.6f;
+                    int fitBottom = leftPage.Bottom - (int)(30 * scale);
                     while (textScale > 0.6f &&
-                           (DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: false) > leftPage.Bottom ||
-                            DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: false) > rightPage.Bottom))
+                           (DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: false) > fitBottom ||
+                            DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: false) > fitBottom))
                     {
                         textScale -= 0.05f;
                     }
@@ -3925,6 +3943,11 @@ namespace StayOnTheLine.Forms
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            if (_callScene is { Active: true })
+            {
+                if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { _callScene.Advance(); e.Handled = true; return; }
+                if (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6 && _callScene.TrySelect(e.KeyCode - Keys.D1)) { e.Handled = true; return; }
+            }
             if ((e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) && _charmDialogue.IsActive)
             {
                 _charmDialogue.Advance();

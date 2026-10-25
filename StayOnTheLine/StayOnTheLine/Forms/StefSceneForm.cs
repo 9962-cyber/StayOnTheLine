@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using StayOnTheLine.Controls;
 using StayOnTheLine.Controls.Messenger;
@@ -17,7 +18,7 @@ namespace StayOnTheLine.Forms
     /// OOP Principles Demonstrated:
     /// 1. INHERITANCE: Inherits BaseGameForm (borderless fullscreen, composited, black).
     /// 2. COMPOSITION: Built from self-contained controls - MessengerWindow (thread + responses),
-    ///    AuditLogWindow, two CharacterPortraits and a RoomCaption.
+    ///    AuditLogWindow, Steff's CharacterPortrait and a PhoneCallScene for Charm at the desk.
     /// 3. SEPARATION OF CONCERNS: The DialogueRunner decides what happens next; this form only
     ///    decides when and how it is shown (typing delays, slides, cues, sounds).
     ///
@@ -48,10 +49,10 @@ namespace StayOnTheLine.Forms
         private readonly MessengerWindow _messenger = new();
         private readonly AuditLogWindow _audit = new() { Visible = false };
         private readonly CharacterPortrait _stef = new() { Visible = false };
-        private readonly CharacterPortrait _charm = new() { Visible = false };
-        private readonly RoomCaption _caption = new() { Visible = false };
         private readonly BevelButton _btnBack = new() { Text = "‹ BACK" };
-        private readonly List<RoomChoiceButton> _roomChoices = new();
+        // Things said at the desk (Charm walking over) play as a full-screen room scene: the office,
+        // the speaker standing in it, the dialogue box and any spoken choices beneath it
+        private readonly PhoneCallScene _roomScene = new();
 
         // Timers: message pump (typing delays), animations, terminal clock
         private readonly System.Windows.Forms.Timer _pump = new();
@@ -65,7 +66,6 @@ namespace StayOnTheLine.Forms
 
         // Animated scene state (0 = hidden/closed, 1 = shown/open)
         private float _stefT, _stefTarget;
-        private float _charmT, _charmTarget;
         private float _auditT, _auditTarget;
 
         private bool _holdForAudit;
@@ -107,19 +107,18 @@ namespace StayOnTheLine.Forms
                 }
             }
             _stef.Sprite = GetSprite("stef_neutral");
-            _charm.Sprite = GetSprite("charm_default");
         }
 
         private void BuildScene()
         {
             _crt.Controls.Add(_messenger);
             _crt.Controls.Add(_audit);
-            Controls.AddRange(new Control[] { _crt, _stef, _charm, _caption, _btnBack });
+            Controls.AddRange(new Control[] { _crt, _stef, _roomScene, _btnBack });
+            _roomScene.SceneBackground = TryLoadImage("dispatch_desk_bg.png");
 
             // Back to front: CRT, portraits, caption, back button
             _stef.BringToFront();
-            _charm.BringToFront();
-            _caption.BringToFront();
+            _roomScene.BringToFront();
             _btnBack.BringToFront();
         }
 
@@ -132,7 +131,8 @@ namespace StayOnTheLine.Forms
             response.AuditLogRequested += (s, e) => OnAuditButton();
 
             _messenger.Thread.Click += (s, e) => SkipWait();
-            _caption.Click += (s, e) => SkipWait();
+            _roomScene.Click += (s, e) => SkipWait();
+            _roomScene.ChoiceSelected += (s, index) => OnChoiceSelected(this, index);
 
             _audit.RevealCompleted += (s, e) =>
             {
@@ -173,8 +173,9 @@ namespace StayOnTheLine.Forms
             AudioManager.Instance.PlayAmbientLoop();
             _clockTimer.Start();
 
-            // Stef slides in while the first line is on its way
-            _stefTarget = 1f;
+            // Steff slides in while the first line is on its way (unless nobody is on the other end)
+            _stefTarget = _script.ShowContactPortrait ? 1f : 0f;
+            if (_script.StartStatus != null) _messenger.SetStatus(_script.StartStatus, alert: true);
             _anim.Start();
             _runner.Start(_script.StartNodeId);
             _extraDelay = 900;
@@ -233,7 +234,6 @@ namespace StayOnTheLine.Forms
         /// <summary>Space, Enter or a click hurries the current wait along.</summary>
         private void SkipWait()
         {
-            if (_caption.Visible && _caption.IsTyping) _caption.CompleteTyping();
             if (_pump.Enabled && !_holdForAudit) DeliverNext();
         }
 
@@ -242,19 +242,25 @@ namespace StayOnTheLine.Forms
             if (line.Portrait != null)
             {
                 var sprite = GetSprite(line.Portrait);
-                if (line.Portrait.StartsWith("charm", StringComparison.OrdinalIgnoreCase)) _charm.Sprite = sprite;
-                else _stef.Sprite = sprite;
+                if (!line.Portrait.StartsWith("charm", StringComparison.OrdinalIgnoreCase)) _stef.Sprite = sprite;
             }
 
             if (line.Channel == ChatChannel.Room)
             {
-                _caption.ShowLine(line.Sender == ChatSender.Narration ? string.Empty : line.SpeakerName, line.Text);
-                _caption.BringToFront();
+                bool narration = line.Sender == ChatSender.Narration;
+                Image? portrait = line.Portrait != null ? GetSprite(line.Portrait) : null;
+                _roomScene.Bounds = ClientRectangle;
+                _roomScene.PlayLines(new[]
+                {
+                    new CallSceneLine(narration ? string.Empty : line.SpeakerName, line.Text, portrait, narration ? string.Empty : "AT YOUR DESK")
+                });
                 _btnBack.BringToFront();
                 _extraDelay = 600 + line.Text.Length * 38; // time to read the spoken line
                 return;
             }
 
+            // Back on the terminal: the room scene closes
+            if (_roomScene.Active) _roomScene.Close();
             _messenger.Thread.Append(line);
             switch (line.Sender)
             {
@@ -283,16 +289,10 @@ namespace StayOnTheLine.Forms
                 _clockGlitchTicks = 6;
             }
             if ((cue & SceneCue.CloseAuditLog) != 0) CloseAuditLog();
-            if ((cue & SceneCue.CharmEnters) != 0)
-            {
-                _charmTarget = 1f;
-                _stefTarget = 0f;
-            }
-            if ((cue & SceneCue.CharmLeaves) != 0) _charmTarget = 0f;
+            if ((cue & SceneCue.CharmEnters) != 0) _stefTarget = 0f; // Charm appears in the room scene instead
             if ((cue & SceneCue.StefReturns) != 0)
             {
                 _stefTarget = 1f;
-                _caption.Visible = false;
             }
             if ((cue & SceneCue.ConnectionLost) != 0)
             {
@@ -317,9 +317,13 @@ namespace StayOnTheLine.Forms
             {
                 // Answered out loud: buttons under the speaker's dialogue box, messenger stays locked
                 response.ShowWaiting("RESPOND OUT LOUD");
-                ShowRoomChoices(node.Choices);
+                _roomScene.SetChoices(node.Choices.Select(c => (c.Text, false)).ToList());
+                return;
             }
-            else if (_runner.IsAwaitingChoice)
+
+            // Nothing more is said at the desk: the room scene closes once its last line is read
+            if (_roomScene.Active) _roomScene.EndAfterLines();
+            if (_runner.IsAwaitingChoice)
             {
                 response.ShowChoices(node.ChoicePrompt, node.Choices);
             }
@@ -342,37 +346,8 @@ namespace StayOnTheLine.Forms
         private void OnChoiceSelected(object? sender, int index)
         {
             if (!_runner.IsAwaitingChoice) return;
-            ClearRoomChoices();
             _runner.Choose(index);
             ScheduleNext();
-        }
-
-        private void ShowRoomChoices(IReadOnlyList<DialogueChoice> choices)
-        {
-            ClearRoomChoices();
-            for (int i = 0; i < choices.Count; i++)
-            {
-                int index = i;
-                var button = new RoomChoiceButton { Text = choices[i].Text };
-                button.Click += (s, e) => OnChoiceSelected(this, index);
-                _roomChoices.Add(button);
-                Controls.Add(button);
-                button.BringToFront();
-            }
-            _caption.CompleteTyping();
-            LayoutScene();
-        }
-
-        private void ClearRoomChoices()
-        {
-            if (_roomChoices.Count == 0) return;
-            foreach (var button in _roomChoices)
-            {
-                Controls.Remove(button);
-                button.Dispose();
-            }
-            _roomChoices.Clear();
-            LayoutScene();
         }
 
         private void OnPlayerAction()
@@ -437,9 +412,8 @@ namespace StayOnTheLine.Forms
 
             if (option >= 0)
             {
-                if (option < _roomChoices.Count)
+                if (_roomScene.TrySelect(option))
                 {
-                    OnChoiceSelected(this, option);
                     e.Handled = true;
                 }
                 else
@@ -496,7 +470,6 @@ namespace StayOnTheLine.Forms
         private void Animate()
         {
             bool moving = Step(ref _stefT, _stefTarget, 0.055f)
-                        | Step(ref _charmT, _charmTarget, 0.055f)
                         | Step(ref _auditT, _auditTarget, 0.07f);
 
             if (_auditT <= 0f && _auditTarget <= 0f && _audit.Visible) _audit.Visible = false;
@@ -553,43 +526,19 @@ namespace StayOnTheLine.Forms
             int auditX = x0 + w0 - auditW + (int)((1f - p) * (auditW + side * 2));
             _audit.Bounds = new Rectangle(auditX, y0, auditW, h0);
 
-            // 3. Portraits: Stef at the left edge of the thread, Charm standing at the right
+            // 3. Steff at the left edge of the thread
             int ph = (int)(H * 0.84f), pw = (int)(ph * 0.75f);
             var portraitSize = new Size(pw, ph);
             if (_stef.Size != portraitSize) _stef.Size = portraitSize;
-            if (_charm.Size != portraitSize) _charm.Size = portraitSize;
 
             int threadLeft = screen.X + x0 + _messenger.ThreadLeft;
             int stefShown = Math.Max(-(int)(pw * 0.38f), threadLeft - (int)(pw * 0.85f));
             _stef.Location = new Point(Lerp(-pw - 8, stefShown, Shapes.Ease(_stefT)), H - ph);
             _stef.Visible = _stefT > 0.001f;
 
-            int charmShown = Math.Min(W - (int)(pw * 0.80f), screen.Right - (int)(pw * 0.42f));
-            _charm.Location = new Point(Lerp(W + 8, charmShown, Shapes.Ease(_charmT)), H - ph);
-            _charm.Visible = _charmT > 0.001f;
 
-            // 4. Room caption on the desk under the monitor, ending where Charm's sprite begins
-            int capW = Math.Min(W - 32, (int)(_imgRect.Width * 0.62f));
-            int capH = Math.Max(110, (int)(H * 0.15f));
-            int capX = _imgRect.X + (_imgRect.Width - capW) / 2;
-            int capRightLimit = charmShown + (int)(pw * 0.12f);
-            if (capX + capW > capRightLimit) capX = Math.Max(16, capRightLimit - capW);
-            capW = Math.Min(capW, capRightLimit - capX);
-            capW = Math.Max(200, capW);
-            int bottomMargin = (int)(H * 0.035f);
-
-            // Spoken choices sit in a row under the caption, which moves up to make room
-            if (_roomChoices.Count > 0)
-            {
-                int gap = Math.Max(8, (int)(capH * 0.08f));
-                int choiceH = Math.Max(40, (int)(capH * 0.42f));
-                int choiceW = (capW - gap * (_roomChoices.Count - 1)) / _roomChoices.Count;
-                int choiceY = H - bottomMargin - choiceH;
-                for (int i = 0; i < _roomChoices.Count; i++)
-                    _roomChoices[i].Bounds = new Rectangle(capX + i * (choiceW + gap), choiceY, choiceW, choiceH);
-                bottomMargin += choiceH + gap;
-            }
-            _caption.Bounds = new Rectangle(capX, H - capH - bottomMargin, capW, capH);
+            // 4. Room scene (Charm at the desk) covers the window; back button on the monitor bezel
+            _roomScene.Bounds = ClientRectangle;
 
             // 5. Back button on the monitor bezel, above the screen's top-right corner
             int bezel = Math.Max(0, screen.Y - _imgRect.Y);
@@ -645,7 +594,7 @@ namespace StayOnTheLine.Forms
             var strip = new RectangleF(16 * u, 0, rc.Width - 32 * u, 38 * u);
             using var ink = new SolidBrush(MessengerTheme.CrtInk);
 
-            g.DrawString("NIGHT DESK  //  SHIFT 03", _theme.Caps, ink, strip, Shapes.Left);
+            g.DrawString($"NIGHT DESK  //  SHIFT {(_profile?.CurrentShift ?? 3):D2}", _theme.Caps, ink, strip, Shapes.Left);
             g.DrawString(_script.CallLabel, _theme.Caps, ink, strip, Shapes.Center);
 
             // The clock occasionally shows seconds that cannot exist

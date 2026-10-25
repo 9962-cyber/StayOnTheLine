@@ -44,7 +44,7 @@ namespace StayOnTheLine.Systems.Dialogue
                 new("S2 00:41", "INC-0201", "WATER TOWER RD", "DISTANCE EDIT", op, true),
                 new("S2 01:12", "INC-0245", "14 BELL ST", "ADDRESS EDIT", op, true),
                 new("S2 01:47", "INC-0288", "[NO RECORD]", "DELETED", op, true),
-                new("S3 02:16", "ARC-08", "LINE 08", "ACCESSED", "OP-K.SIBLERO", false)
+                new("S3 02:16", "ARC-08", "LINE 08", "ACCESSED", "OP-K.NARCISO", false)
             };
         }
     }

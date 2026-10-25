@@ -46,9 +46,18 @@ namespace StayOnTheLine.Controls
             using (var border = new Pen(Color.FromArgb(_hovered ? 255 : 210, 235, 235, 235), 1.5f))
                 g.DrawRectangle(border, 1, 1, W - 3, H - 3);
 
-            // Sized so a full option ("Say you're checking an unusual record.") fits on two lines
-            float size = Math.Clamp(H / 6.4f, 7f, 14f);
-            using var font = FontManager.GetDialogueFont(size);
+            // As large as the button allows, shrinking only until the whole option fits (two lines at most)
+            float pad0 = H * 0.18f;
+            var area = new SizeF(W - pad0 * 2, H - 6);
+            float size = Math.Clamp(H / 3.6f, 7f, 15f);
+            var font = FontManager.GetDialogueFont(size);
+            while (size > 7f && g.MeasureString(Text, font, (int)area.Width).Height > area.Height)
+            {
+                font.Dispose();
+                size -= 0.5f;
+                font = FontManager.GetDialogueFont(size);
+            }
+            using var _ = font;
             using var format = new StringFormat
             {
                 Alignment = StringAlignment.Center,

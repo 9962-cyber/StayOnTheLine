@@ -121,14 +121,16 @@ namespace StayOnTheLine.Forms
             UpdatePhoneRing();       // the first line starts ringing now
         }
 
-        /// <summary>The two pages inside shiftbriefing_book.png (1920x1080 art), in screen pixels.</summary>
+        /// <summary>The two pages inside briefing_book.png (1920x1080 art), in screen pixels.</summary>
         private (Rectangle Book, Rectangle Left, Rectangle Right, float Scale) ShiftBookGeometry()
         {
             var rc = _pnlShiftBook!.ClientRectangle;
-            var book = _imgShiftBriefingBook != null ? GetContainFitRect(_imgShiftBriefingBook, rc) : rc;
+            // The book sits on the desk at 85% of the screen instead of filling it
+            var area = Rectangle.Inflate(rc, -(int)(rc.Width * 0.075f), -(int)(rc.Height * 0.075f));
+            var book = _imgShiftBriefingBook != null ? GetContainFitRect(_imgShiftBriefingBook, area) : area;
             float s = book.Width / 1920f;
-            var left = new Rectangle(book.X + (int)(395 * s), book.Y + (int)(115 * s), (int)(565 * s), (int)(860 * s));
-            var right = new Rectangle(book.X + (int)(1070 * s), book.Y + (int)(115 * s), (int)(570 * s), (int)(860 * s));
+            var left = new Rectangle(book.X + (int)(430 * s), book.Y + (int)(100 * s), (int)(505 * s), (int)(860 * s));
+            var right = new Rectangle(book.X + (int)(1045 * s), book.Y + (int)(100 * s), (int)(500 * s), (int)(860 * s));
             return (book, left, right, s);
         }
 
@@ -146,8 +148,9 @@ namespace StayOnTheLine.Forms
             using (var wash = new SolidBrush(Color.FromArgb(200, 4, 6, 4))) g.FillRectangle(wash, rc);
 
             var (book, left, right, s) = ShiftBookGeometry();
+
             using (var shadow = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
-                g.FillRectangle(shadow, book.X + book.Width * 0.15f, book.Y + book.Height * 0.08f + 14 * s, book.Width * 0.72f, book.Height * 0.86f);
+                g.FillRectangle(shadow, book.X + 300 * s, book.Y + 60 * s, 1380 * s, 960 * s);
             if (_imgShiftBriefingBook != null) g.DrawImage(_imgShiftBriefingBook, book);
 
             var briefing = Scenario.Briefing;

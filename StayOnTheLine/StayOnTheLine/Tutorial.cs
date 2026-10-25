@@ -566,6 +566,9 @@ namespace StayOnTheLine
             }
         }
 
+        /// <summary>Full names are introduced in the opening tutorial only; later shifts use first names.</summary>
+        private bool FullNames => (_profile?.CurrentShift ?? 1) <= 1;
+
         private void LoadStory()
         {
             if (_profile?.CurrentShift == 2)
@@ -722,18 +725,18 @@ namespace StayOnTheLine
                 }
                 else if (string.Equals(line.Speaker, "KRISHA", StringComparison.OrdinalIgnoreCase))
                 {
-                    lblSpeaker.Text = "KRISHA NARCISO";
+                    lblSpeaker.Text = FullNames ? "KRISHA NARCISO" : "KRISHA";
                     lblIncoming.Text = "SHIFT SUPERVISOR";
                 }
                 else if (string.Equals(line.Speaker, "YSA", StringComparison.OrdinalIgnoreCase))
                 {
-                    lblSpeaker.Text = "YSA";
+                    lblSpeaker.Text = FullNames ? "YSA SIBLERO" : "YSA";
                     lblIncoming.Text = "SHIFT SUPERVISOR";
                 }
                 else if (string.Equals(line.Speaker, "CHARM", StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(line.Speaker, "CHARMEE", StringComparison.OrdinalIgnoreCase))
                 {
-                    lblSpeaker.Text = "CHARMEE CANTONES";
+                    lblSpeaker.Text = FullNames ? "CHARMEE CANTONES" : "CHARM";
                     lblIncoming.Text = "OPERATOR / CONSOLE 03";
                 }
                 else

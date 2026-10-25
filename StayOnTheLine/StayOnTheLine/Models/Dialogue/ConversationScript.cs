@@ -27,5 +27,14 @@ namespace StayOnTheLine.Models.Dialogue
 
         /// <summary>Contact status shown at the end, or null to keep whatever the thread left it at.</summary>
         public string? EndStatus { get; init; }
+
+        /// <summary>
+        /// Contact status when the thread opens, or null for the default "ONLINE".
+        /// Shown in red, for a contact who can't be reached (e.g. "USER UNAVAILABLE").
+        /// </summary>
+        public string? StartStatus { get; init; }
+
+        /// <summary>False when the contact never appears in person (nobody is on the other end).</summary>
+        public bool ShowContactPortrait { get; init; } = true;
     }
 }

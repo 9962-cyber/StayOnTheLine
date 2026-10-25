@@ -16,6 +16,7 @@ namespace StayOnTheLine.Systems.Dialogue
     {
         public const string StartNodeId = "intro";
         public const string EndStartNodeId = "endIntro";
+        public const string Shift4StartNodeId = "s4Contact";
 
         // Evidence flags written to OperatorProfile.AnomalyFlags
         public const string FlagIgnoredStef = "Shift3IgnoredStef";
@@ -28,6 +29,24 @@ namespace StayOnTheLine.Systems.Dialogue
         public const string FlagAskedToPreserve = "Shift3AskedStefToPreserveLog";
         public const string FlagToldStefToStop = "Shift3ToldStefToStop";
         public const string FlagEndThreadSeen = "Shift3StefEndThreadSeen";
+        public const string FlagShift4SteffUnreachable = "Shift4SteffUnreachable";
+
+        /// <summary>
+        /// Shift 4 end-shift conversation: the player tries to reach Steff on the records terminal,
+        /// the message is never delivered, and Charm rolls over to ask about it. Steff never appears.
+        /// </summary>
+        public static ConversationScript Shift4EndOfShift() => new(BuildShift4EndOfShift(), Shift4StartNodeId)
+        {
+            CallLabel = "END OF SHIFT",
+            ClockStart = new TimeSpan(2, 58, 0),
+            SeenFlag = FlagShift4SteffUnreachable,
+            StartStatus = "USER UNAVAILABLE",
+            ShowContactPortrait = false,
+            EndTitle = "MESSAGE NOT DELIVERED",
+            EndBody = "Steff still hasn't answered. The records terminal shows no activity from her account tonight.",
+            EndButton = "BACK TO THE DESK",
+            EndStatus = null
+        };
 
         /// <summary>
         /// Thread that opens on the records terminal at the start of Shift 3
@@ -242,6 +261,36 @@ namespace StayOnTheLine.Systems.Dialogue
                         Room("[You look at her.]"),
                         Charm("What? I just asked.", "charm_smile"),
                         Room("[Charm returns to her console.]") with { Cue = SceneCue.CharmLeaves })
+            };
+        }
+
+        public static IReadOnlyList<DialogueNode> BuildShift4EndOfShift()
+        {
+            return new List<DialogueNode>
+            {
+                // END-SHIFT CONVERSATION — PLAYER ACTION: Attempt to contact Steff.
+                new DialogueNode(Shift4StartNodeId)
+                    .Requires(new PlayerAction(
+                        "PLAYER ACTION",
+                        "Steff hasn't messaged tonight. Try to reach her on the records terminal.",
+                        "ATTEMPT TO CONTACT STEFF",
+                        "s4Undelivered")),
+
+                new DialogueNode("s4Undelivered",
+                        Player("Steff? Are you there?"),
+                        Sys("MESSAGE NOT DELIVERED.") with { IsAlert = true },
+                        Sys("USER UNAVAILABLE.") with { IsAlert = true, Cue = SceneCue.SignalGlitch },
+                        Room("[Charm rolls her chair toward your console.]") with { Cue = SceneCue.CharmEnters },
+                        Charm("Looking for Steff?", "charm_default"),
+                        Room("[You point to the message.]"),
+                        Charm("Huh. That's strange. She usually answers, even when she's busy.", "charm_serious"),
+                        Charm("Maybe she finally went home. The girl practically lives in that records room.", "charm_smile"),
+                        Room("[Charm looks at your saved evidence.]"),
+                        Charm("Still looking into the old calls?", "charm_serious"),
+                        Charm("You know, sometimes it's better to leave old mistakes in the past.", "charm_default"),
+                        Room("[She pauses, then smiles.]"),
+                        Charm("No offense. I just don't want you getting into trouble over something you didn't do.", "charm_smile"),
+                        Room("[Charm rolls back to her console.]") with { Cue = SceneCue.CharmLeaves })
             };
         }
 

@@ -16,7 +16,7 @@ namespace StayOnTheLine.Systems
     {
         public int ShiftNumber => 1;
         public string ShiftTitle => "SHIFT 01 — TRAINING PROTOCOL";
-        public string SupervisorName => "KRISHA NARCISO";
+        public string SupervisorName => "KRISHA";
         public int InitialUnits => 3;
         public bool HasTutorialGuidance => true;
 
@@ -69,7 +69,7 @@ namespace StayOnTheLine.Systems
                 {
                     SlotNumber = 2,
                     CallId = "999-0196",
-                    CallerName = "CHLOE BAUTISTA",
+                    CallerName = "CHLOE",
                     Location = "14 BELL STREET",
                     InitialDialogue = "Please send someone! Someone is trying to break into my house! I heard the back patio glass break and I'm locked upstairs!",
                     SignalStatus = "UNSTABLE (64%)",

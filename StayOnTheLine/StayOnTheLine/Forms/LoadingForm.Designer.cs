@@ -62,7 +62,7 @@ namespace StayOnTheLine
             lblTitleStayOn.ForeColor = Color.FromArgb(220, 218, 208);
             lblTitleStayOn.Location = new Point(560, 268);
             lblTitleStayOn.Name = "lblTitleStayOn";
-            lblTitleStayOn.Size = new Size(800, 115);
+            lblTitleStayOn.Size = new Size(1100, 150);
             lblTitleStayOn.TabIndex = 1;
             lblTitleStayOn.Text = "Stay On";
             lblTitleStayOn.TextAlign = ContentAlignment.MiddleCenter;
@@ -75,7 +75,7 @@ namespace StayOnTheLine
             lblTitleTheLine.ForeColor = Color.FromArgb(230, 227, 218);
             lblTitleTheLine.Location = new Point(560, 380);
             lblTitleTheLine.Name = "lblTitleTheLine";
-            lblTitleTheLine.Size = new Size(800, 105);
+            lblTitleTheLine.Size = new Size(1100, 140);
             lblTitleTheLine.TabIndex = 2;
             lblTitleTheLine.Text = "The Line";
             lblTitleTheLine.TextAlign = ContentAlignment.MiddleCenter;

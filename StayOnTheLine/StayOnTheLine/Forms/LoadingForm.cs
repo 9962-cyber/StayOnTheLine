@@ -69,12 +69,12 @@ namespace StayOnTheLine
         /// </summary>
         private void ApplyCustomFonts()
         {
-            lblTitleStayOn.Font = FontManager.GetSmallCapsFont(62F);
-            lblSubtitle.Font = FontManager.GetSmallCapsFont(12F);
+            lblTitleStayOn.Font = FontManager.GetSmallCapsFont(84F);
+            lblSubtitle.Font = FontManager.GetSmallCapsFont(14F);
             lblStatus.Font = FontManager.GetSmallCapsFont(13F);
             lblPercentage.Font = FontManager.GetSmallCapsFont(11F);
             lblPrompt.Font = FontManager.GetSmallCapsFont(13F);
-            lblTitleTheLine.Font = FontManager.GetItalicFont(56F);
+            lblTitleTheLine.Font = FontManager.GetItalicFont(76F);
         }
 
 
@@ -108,19 +108,19 @@ namespace StayOnTheLine
             int centerY = ClientSize.Height / 2;
 
             // Center Title Group
-            int titleBaseY = Math.Max((int)(40 * s), centerY - (int)(250 * s));
+            int titleBaseY = Math.Max((int)(40 * s), centerY - (int)(300 * s));
 
             lblSubtitle.Left = centerX - (lblSubtitle.Width / 2);
             lblSubtitle.Top = titleBaseY;
 
             lblTitleStayOn.Left = centerX - (lblTitleStayOn.Width / 2);
-            lblTitleStayOn.Top = titleBaseY + (int)(38 * s);
+            lblTitleStayOn.Top = titleBaseY + (int)(40 * s);
 
             lblTitleTheLine.Left = centerX - (lblTitleTheLine.Width / 2);
-            lblTitleTheLine.Top = titleBaseY + (int)(148 * s);
+            lblTitleTheLine.Top = titleBaseY + (int)(185 * s);
 
             // Center Loading Section (approx 83% down the screen)
-            int loadingBaseY = Math.Max(titleBaseY + (int)(290 * s), (int)(ClientSize.Height * 0.82));
+            int loadingBaseY = Math.Max(titleBaseY + (int)(340 * s), (int)(ClientSize.Height * 0.82));
 
             lblStatus.Left = centerX - (lblStatus.Width / 2);
             lblStatus.Top = loadingBaseY;
