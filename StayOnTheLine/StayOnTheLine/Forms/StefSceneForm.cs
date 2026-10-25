@@ -131,7 +131,7 @@ namespace StayOnTheLine.Forms
             response.AuditLogRequested += (s, e) => OnAuditButton();
 
             _messenger.Thread.Click += (s, e) => SkipWait();
-            _roomScene.Click += (s, e) => SkipWait();
+            _roomScene.LineAdvanceRequested += (s, e) => DeliverNext();
             _roomScene.ChoiceSelected += (s, index) => OnChoiceSelected(this, index);
 
             _audit.RevealCompleted += (s, e) =>
@@ -150,7 +150,11 @@ namespace StayOnTheLine.Forms
             };
 
             _crt.Paint += PaintCrt;
-            _pump.Tick += (s, e) => DeliverNext();
+            _pump.Tick += (s, e) =>
+            {
+                if (_roomScene.Active && _roomScene.IsTyping) return;
+                DeliverNext();
+            };
             _anim.Tick += (s, e) => Animate();
             _clockTimer.Tick += (s, e) =>
             {
@@ -234,6 +238,11 @@ namespace StayOnTheLine.Forms
         /// <summary>Space, Enter or a click hurries the current wait along.</summary>
         private void SkipWait()
         {
+            if (_roomScene.Active)
+            {
+                _roomScene.Advance();
+                return;
+            }
             if (_pump.Enabled && !_holdForAudit) DeliverNext();
         }
 
@@ -255,7 +264,7 @@ namespace StayOnTheLine.Forms
                     new CallSceneLine(narration ? string.Empty : line.SpeakerName, line.Text, portrait, narration ? string.Empty : "AT YOUR DESK")
                 });
                 _btnBack.BringToFront();
-                _extraDelay = 600 + line.Text.Length * 38; // time to read the spoken line
+                _extraDelay = 800 + line.Text.Length * 40; // time to read the spoken line
                 return;
             }
 
@@ -423,7 +432,14 @@ namespace StayOnTheLine.Forms
             }
             else if (e.KeyCode is Keys.Space or Keys.Enter)
             {
-                if (!_messenger.Response.TryInvokeAction()) SkipWait();
+                if (_roomScene.Active)
+                {
+                    _roomScene.Advance();
+                }
+                else
+                {
+                    if (!_messenger.Response.TryInvokeAction()) SkipWait();
+                }
                 e.Handled = true;
             }
             else if (e.KeyCode == Keys.Escape)

@@ -29,6 +29,9 @@ namespace StayOnTheLine.Forms
 
         private ViewState _currentView = ViewState.DeskRoom;
 
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public Action<OperatorProfile>? OnShiftTransitionRequested { get; set; }
+
         // Assets
         private Image? _imgDeskRoom;
         private Image? _imgComputerDesk;
@@ -71,6 +74,16 @@ namespace StayOnTheLine.Forms
         private Label _btnDeskSettings = null!;
         private Label _btnDeskEndShift = null!;
         private Panel? _pnlManualModal;
+        private int _manualTab = 0; // 0 = Directive Protocols, 1 = Evidence Dossier
+
+        // Protocol Pause Menu & Autosave HUD
+        private Panel? _pnlPauseMenu;
+        private Panel? _pnlPauseCard;
+        private Label? _lblPauseSubtitle;
+        private Label? _lblPauseMeta;
+        private readonly List<Label> _pauseButtons = new();
+        private Label? _lblAutosaveBadge;
+        private readonly System.Windows.Forms.Timer _autosaveFadeTimer = new() { Interval = 2400 };
 
         // UI Controls for Computer Terminal View
         private Panel _pnlCrtScreen = null!;
@@ -276,16 +289,16 @@ namespace StayOnTheLine.Forms
 
             _btnDeskSettings = new Label
             {
-                Text = "[ SETTINGS / ESC ]",
+                Text = "[ PROTOCOL PAUSE / ESC ]",
                 ForeColor = Color.FromArgb(180, 195, 175),
                 BackColor = Color.Transparent,
                 Font = FontManager.GetSmallCapsFont(13f, FontStyle.Regular),
                 Dock = DockStyle.Right,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Width = 180,
+                Width = 205,
                 Cursor = Cursors.Hand
             };
-            _btnDeskSettings.Click += (s, e) => OpenInGameSettings();
+            _btnDeskSettings.Click += (s, e) => ShowPauseMenu();
             _btnDeskSettings.MouseEnter += (s, e) => _btnDeskSettings.ForeColor = Color.White;
             _btnDeskSettings.MouseLeave += (s, e) => _btnDeskSettings.ForeColor = Color.FromArgb(180, 195, 175);
 
@@ -378,7 +391,7 @@ namespace StayOnTheLine.Forms
             // Tactile Sticky Note on Computer Desk below Monitor (matching computerscreenforcall.png)
             _lblDeskStickyNote = new Label
             {
-                Text = "LINE 08\nDO NOT ANSWER",
+                Text = GetStickyNoteText(),
                 ForeColor = Color.FromArgb(36, 30, 18),
                 BackColor = Color.FromArgb(230, 235, 215, 135),
                 Font = FontManager.GetSmallCapsFont(8.5f, FontStyle.Bold),
@@ -387,16 +400,7 @@ namespace StayOnTheLine.Forms
                 BorderStyle = BorderStyle.FixedSingle,
                 Visible = false
             };
-            _lblDeskStickyNote.Click += (s, e) =>
-            {
-                AudioManager.Instance.PlayPaperRustle();
-                ParchmentNoticeDialog.ShowNotice(
-                    this,
-                    "HANDWRITTEN NOTE // TAPED TO CONSOLE",
-                    "Line 08 — Do not answer.",
-                    "\"Do not answer. Do not trace. That channel has been dead for twenty years.\"\n\n— Shift Supervisor Krisha",
-                    "PUT IT BACK");
-            };
+            _lblDeskStickyNote.Click += (s, e) => ShowStickyNoteDialog();
             Controls.Add(_lblDeskStickyNote);
 
             // -------------------------------------------------------------
@@ -424,16 +428,16 @@ namespace StayOnTheLine.Forms
 
             _btnTerminalSettings = new Label
             {
-                Text = "⚙ Settings",
+                Text = "⏸ Pause / ESC",
                 ForeColor = Color.FromArgb(190, 200, 190),
                 BackColor = Color.FromArgb(180, 36, 40, 36),
                 Font = FontManager.GetSmallCapsFont(12f, FontStyle.Regular),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(110, 32),
+                Size = new Size(116, 32),
                 Cursor = Cursors.Hand,
                 Visible = false
             };
-            _btnTerminalSettings.Click += (s, e) => OpenInGameSettings();
+            _btnTerminalSettings.Click += (s, e) => ShowPauseMenu();
             Controls.Add(_btnTerminalSettings);
 
             _btnTerminalEndShift = new Label
@@ -650,6 +654,9 @@ namespace StayOnTheLine.Forms
             _pnlCallBox.MouseWheel += OnTranscriptMouseWheel;
             _pnlTranscriptScroll.MouseWheel += OnTranscriptMouseWheel;
             _lblCallTranscript.MouseWheel += OnTranscriptMouseWheel;
+            _pnlCallBox.Click += (s, e) => SkipTypewriter();
+            _pnlTranscriptScroll.Click += (s, e) => SkipTypewriter();
+            _lblCallTranscript.Click += (s, e) => SkipTypewriter();
 
             // Telemetry Row (Location / Signal / Trust / Panic)
             _pnlTelemetry = new Panel
@@ -820,7 +827,7 @@ namespace StayOnTheLine.Forms
                 }
             };
 
-            // Tutorial Pulse Timer for Glowing Halos & Arrows
+            // Pulse Timer for Glowing Halos, Arrows & High-Panic Edge Pulse
             _tutorialPulseTimer.Interval = 600;
             _tutorialPulseTimer.Tick += (s, e) =>
             {
@@ -836,18 +843,155 @@ namespace StayOnTheLine.Forms
                 {
                     _lblGuideArrow.ForeColor = _pulseHighlight ? Color.FromArgb(255, 235, 130) : Color.FromArgb(200, 180, 90);
                 }
+                if (CurrentCall is { PanicPercentage: >= 80 } && _pnlCrtScreen.Visible)
+                {
+                    UpdateTelemetryDisplay(CurrentCall);
+                    _pnlCrtScreen.Invalidate();
+                }
             };
-
-            if (Scenario.HasTutorialGuidance)
-            {
-                _tutorialPulseTimer.Start();
-            }
+            _tutorialPulseTimer.Start();
+            InitializeAutosaveBadge();
         }
 
         private static string QueueLocationText(EmergencyCall call) =>
             call.IsRestricted ? "SOURCE CLASSIFIED"
             : call.AddressVerified ? call.Location
             : "TRACING…";
+
+        private string GetStickyNoteText() => Scenario.ShiftNumber switch
+        {
+            1 => "LINE 08\nDO NOT ANSWER",
+            2 => "COFFEE &\nUNITS // C.",
+            3 => "2 UNITS ONLY\n// CHARM",
+            4 => "COMPLIANCE\n// DIR. YSA",
+            _ => "NIGHT WATCH\nSTATION 04"
+        };
+
+        private void ShowStickyNoteDialog()
+        {
+            AudioManager.Instance.PlayPaperRustle();
+            switch (Scenario.ShiftNumber)
+            {
+                case 1:
+                    ParchmentNoticeDialog.ShowNotice(
+                        this,
+                        "HANDWRITTEN NOTE // TAPED TO CONSOLE",
+                        "Line 08 — Do not answer.",
+                        "\"Do not answer. Do not trace. That channel has been dead for twenty years.\"\n\n— Shift Supervisor Krisha",
+                        "PUT IT BACK");
+                    break;
+                case 2:
+                    ParchmentNoticeDialog.ShowNotice(
+                        this,
+                        "CREASED MEMO // TUCKED UNDER MONITOR",
+                        "Shift 2 Checklist — Charm",
+                        "\"Hey! Don't forget: we've only got 3 patrol units on the night shift. Don't blow them all on minor noise calls! Also, whoever finishes the pot has to brew the next one. Don't leave it dry!\"\n\n— Charmee Cantones",
+                        "PUT IT BACK");
+                    break;
+                case 3:
+                    ParchmentNoticeDialog.ShowNotice(
+                        this,
+                        "URGENT SCRIBBLE // TAPED OVER ARCHIVE LEDGER",
+                        "Unit Cutbacks & System Sync — Charm",
+                        "\"Fleet maintenance pulled Car 03 for electrical faults. We only have 2 units tonight. If the archive search hangs, don't force a re-index—the precinct database is acting weird again. Stay sharp.\"\n\n— Charm",
+                        "PUT IT BACK");
+                    break;
+                case 4:
+                    ParchmentNoticeDialog.ShowNotice(
+                        this,
+                        "OFFICIAL DIRECTIVE MEMO // PINNED TO CONSOLE",
+                        "Notice of Procedural Compliance — Ysa",
+                        "\"All operators are reminded that incident logs are synchronized directly with Civil Defense oversight. Any unauthorized review of sealed records or unverified dispatch routing will be treated as an immediate protocol violation.\"\n\n— Acting Supervisor Ysa",
+                        "PUT IT BACK");
+                    break;
+                default:
+                    ParchmentNoticeDialog.ShowNotice(
+                        this,
+                        "NIGHT DESK REMINDER",
+                        $"Shift {Scenario.ShiftNumber:D2} Station Note",
+                        "\"Keep both ears open and trust your logs. The line never sleeps.\"\n\n— Night Desk Station 04",
+                        "PUT IT BACK");
+                    break;
+            }
+        }
+
+        private void UpdateTelemetryDisplay(EmergencyCall call)
+        {
+            _lblLocation.Text = $"LOCATION: {call.DisplayLocation}";
+            _lblSignal.Text = $"SIGNAL: {call.SignalStatus}";
+            _lblTrust.Text = $"TRUST: {call.TrustPercentage}%";
+
+            // Dynamic Trust Color Shading
+            if (call.TrustPercentage >= 70)
+                _lblTrust.ForeColor = Color.FromArgb(140, 230, 150);
+            else if (call.TrustPercentage >= 40)
+                _lblTrust.ForeColor = Color.FromArgb(240, 210, 110);
+            else
+                _lblTrust.ForeColor = Color.FromArgb(245, 110, 90);
+
+            // Dynamic Panic Color Shading & Pulsing Red Danger
+            if (call.PanicPercentage >= 80)
+            {
+                _lblPanic.Text = $"PANIC: {call.PanicPercentage}% ⚠";
+                _lblPanic.ForeColor = _pulseHighlight
+                    ? Color.FromArgb(255, 60, 60)
+                    : Color.FromArgb(215, 35, 35);
+            }
+            else if (call.PanicPercentage >= 65)
+            {
+                _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
+                _lblPanic.ForeColor = Color.FromArgb(255, 150, 70);
+            }
+            else if (call.PanicPercentage >= 40)
+            {
+                _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
+                _lblPanic.ForeColor = Color.FromArgb(245, 210, 100);
+            }
+            else
+            {
+                _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
+                _lblPanic.ForeColor = Color.FromArgb(160, 215, 150);
+            }
+        }
+
+        private string GetPersonalizedMarginNote()
+        {
+            switch (Scenario.ShiftNumber)
+            {
+                case 1:
+                    if (Profile.AnomalyFlags.Contains("BellStreetTimestampParadox"))
+                        return "NOTE: You caught the 14-minute timestamp paradox on Bell St. I told dispatch to scrub it, but good eye. Keep that between us. — K.";
+                    if (State.Errors == 0)
+                        return "NOTE: Flawless adherence to intake protocol. Rare for a rookie. Don't let it go to your head. — Krisha";
+                    return "NOTE: Protocol lapses logged. Review directive 04 on verifying identity before dispatching. — Krisha";
+
+                case 2:
+                    if (Profile.AnomalyFlags.Contains("ChangingDistance"))
+                        return "NOTE: You noticed the patrol car's odometer discrepancy on Highway 4. Stef says it was telemetry lag... I'm not so sure. — C.";
+                    if (State.AvailableUnits >= 2)
+                        return "NOTE: You conserved our night units brilliantly! Day shift actually has working cruisers tomorrow. — Charm";
+                    return "NOTE: A bit heavy on the dispatch button tonight, but we got through it in one piece! — Charm";
+
+                case 3:
+                    if (Profile.AnomalyFlags.Contains("Shift3AuditEntryPreserved") || Profile.AnomalyFlags.Contains("MapleStreetTimestamp"))
+                        return "NOTE: You held onto the purged audit ledger snippet. Be careful who sees that terminal log—Ysa has been watching the sync logs. — C.";
+                    if (State.Errors == 0)
+                        return "NOTE: Clean logs under high pressure. You handled the split lines like a seasoned veteran. — Charm";
+                    return "NOTE: Watch the queue cross-talk. Discrepancies are slipping through into the regional archive. — Charm";
+
+                case 4:
+                    if (Profile.AnomalyFlags.Contains("ChloeRecordingPreserved") || Profile.AnomalyFlags.Contains("BELL_STREET_ADDRESS"))
+                        return "NOTE: Internal audit has flagged anomalous record retention on this terminal. Further unauthorized queries into sealed incidents will result in immediate suspension. — Ysa";
+                    if (State.Errors == 0)
+                        return "NOTE: All standard dispatch metrics within acceptable variance. Shift records archived to central vault. — Acting Supv. Ysa";
+                    return "NOTE: Procedural infractions logged. Station 04 will remain subject to heightened administrative surveillance. — Ysa";
+
+                default:
+                    if (State.Errors == 0)
+                        return "NOTE: Exemplary night watch dispatch. Log integrity confirmed. — Station Supervisor";
+                    return "NOTE: Standard review completed. Protocol discrepancies noted in station log. — Station Supervisor";
+            }
+        }
 
         private void ApplyCrtFontScale(float fontScale)
         {
@@ -1081,6 +1225,17 @@ namespace StayOnTheLine.Forms
                 TextRenderer.DrawText(e.Graphics, tagText, tagFont, tagRect, tagCol,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
 
+                // Hotkey Badge [1], [2], [3], [4]
+                int btnIndex = Array.IndexOf(_actionButtons, lbl);
+                if (btnIndex >= 0 && btnIndex < 4)
+                {
+                    using var numFont = FontManager.GetSmallCapsFont(8f * fs, FontStyle.Bold);
+                    var numRect = new Rectangle(Math.Max(4, (int)(6 * fs)), Math.Max(2, (int)(4 * fs)), (int)(32 * fs), tagH);
+                    Color numCol = isHovered ? Color.White : Color.FromArgb(170, choice.TagColor);
+                    TextRenderer.DrawText(e.Graphics, $"[{btnIndex + 1}]", numFont, numRect, numCol,
+                        TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPrefix);
+                }
+
                 // Main Caption
                 using var captionFont = FontManager.GetItalicFont(12.5f * fs);
                 int capTop = tagRect.Bottom;
@@ -1138,11 +1293,13 @@ namespace StayOnTheLine.Forms
 
             if (isTerminal)
             {
+                AudioManager.Instance.StopOfficeBackgroundRing();
                 AudioManager.Instance.PlayKeyClick();
                 SelectCall(_activeCallIndex);
             }
             else
             {
+                AudioManager.Instance.StartOfficeBackgroundRing();
                 AudioManager.Instance.PlayPaperRustle();
             }
 
@@ -1161,15 +1318,20 @@ namespace StayOnTheLine.Forms
             _lblCallerName.Text = $"▸ {call.DisplayName} ({call.CallId})";
             _lblCallSignalTag.Text = $"[ SIGNAL {call.SignalStatus} ]";
 
-            _lblLocation.Text = $"LOCATION: {call.DisplayLocation}";
-            _lblSignal.Text = $"SIGNAL: {call.SignalStatus}";
-            _lblTrust.Text = $"TRUST: {call.TrustPercentage}%";
-            _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
-            _lblPanic.ForeColor = call.PanicPercentage >= 80 ? Color.FromArgb(255, 100, 100) : Color.FromArgb(255, 180, 120);
+            UpdateTelemetryDisplay(call);
 
             if (call.Stage == CallStage.Ringing)
             {
-                _lblCallTranscript.Text = $"[ INCOMING EMERGENCY TRUNK LINE 0{(index + 1)}: RINGING... ]";
+                _typewriterTimer.Stop();
+                _scriptSegments.Clear();
+                _charmQueuedLines.Clear();
+                _charmDialogue?.Clear();
+                _callScene?.Close();
+
+                string ringText = $"[ INCOMING EMERGENCY TRUNK LINE 0{(index + 1)}: RINGING... ]";
+                _targetDialogue = _displayedDialogue = ringText;
+                _typewriterCharIndex = ringText.Length;
+                _lblCallTranscript.Text = ringText;
                 _transcriptScrollY = 0;
                 _lblCallTranscript.Location = new Point(14, 8);
                 _lblSupervisorBar.Text = call.SupervisorHint;
@@ -1232,7 +1394,8 @@ namespace StayOnTheLine.Forms
                         _lblSupervisorBar.Text = Scenario.ShiftNumber >= 2
                             ? "YSA: Line 08 is locked by Civil Defense directive. Do not touch it."
                             : "KRISHA: Look at the yellow note on your desk: 'Line 08 Do not answer.' That channel has been dead for twenty years.";
-                        AudioManager.Instance.PlayFrequencyBlip();
+                        AudioManager.Instance.PlayBurnHiss();
+                        AudioManager.Instance.PlayEerieLaugh();
                     }
                 });
             }
@@ -1253,7 +1416,7 @@ namespace StayOnTheLine.Forms
                             {
                                 call.Stage = CallStage.Inquiry;
                                 call.Status = CallQueueStatus.Live;
-                                AudioManager.Instance.PlayKeyClick();
+                                AudioManager.Instance.PlayPhonePickup();
                                 StartTypewriter(call.InitialDialogue);
                                 _lblSupervisorBar.Text = "KRISHA: Rule number one trainee: Always verify the caller's identity and exact address before taking action.";
                                 UpdateQueueCards();
@@ -1279,7 +1442,7 @@ namespace StayOnTheLine.Forms
                                     _lblCallerName.Text = $"▸ {call.DisplayName} ({call.CallId})";
                                     _lblLocation.Text = $"LOCATION: {call.DisplayLocation}";
                                     call.TrustPercentage = Math.Min(100, call.TrustPercentage + 10);
-                                    _lblTrust.Text = $"TRUST: {call.TrustPercentage}%";
+                                    UpdateTelemetryDisplay(call);
                                     AudioManager.Instance.PlayTypewriterKeystroke();
                                     StartTypewriter("YOU: \"Can you state your name and confirm your building address for the dispatch log?\"\n\nELEANOR: \"Yes, my name is Eleanor Vance. I live at 21 West Street, Apartment 5B. The racket is directly above me in Apartment 6B.\"");
                                     _lblSupervisorBar.Text = "KRISHA: Identity verified: Eleanor Vance, 21 West St, Apt 5B. Now ask about the disturbance or inspect the archive records.";
@@ -1324,7 +1487,7 @@ namespace StayOnTheLine.Forms
                                 OnClick = () =>
                                 {
                                     call.Stage = CallStage.Resolution;
-                                    AudioManager.Instance.PlayTypewriterKeystroke();
+                                    AudioManager.Instance.PlayPrinterRattle();
                                     StartTypewriter("INCIDENT ARCHIVE #1042: 21 WEST STREET, APT 6B\nRESIDENT: ROBERT COOPER. PRIOR VIOLATIONS: NONE.\nCLASSIFICATION: NON-EMERGENCY RESIDENTIAL NOISE.");
                                     _lblSupervisorBar.Text = "KRISHA: Robert Cooper has a clean record. Standard noise complaint. We don't need to burn a patrol car for this.";
                                     UpdateDynamicChoices();
@@ -1347,6 +1510,8 @@ namespace StayOnTheLine.Forms
                                 call.Status = CallQueueStatus.Resolved;
                                 State.CallsLogged++;
                                 AudioManager.Instance.PlayInkStamp();
+                                AudioManager.Instance.PlayPhoneHangup();
+                                TriggerAutosaveIndicator("INCIDENT #1042 ARCHIVED // AUTOSAVED");
                                 StartTypewriter("YOU: \"We've logged your complaint for building management and the morning shift, Ms. Vance.\"\n\nELEANOR: \"Thank you. Hopefully they'll quiet down soon.\"\n\n[ INCIDENT #1042 LOGGED AS ROUTINE DISTURBANCE. CALL CONCLUDED. ]\n[ PATROL UNITS PRESERVED: " + State.AvailableUnits + " / " + Scenario.InitialUnits + " ]");
                                 _lblSupervisorBar.Text = "KRISHA: Exactly right. Simple noise doesn't justify burning our patrol capacity. We keep cars ready for real emergencies.";
                                 UpdateQueueCards();
@@ -1367,6 +1532,8 @@ namespace StayOnTheLine.Forms
                                 if (State.AvailableUnits > 0) State.AvailableUnits--;
                                 State.CallsLogged++;
                                 AudioManager.Instance.PlayInkStamp();
+                                AudioManager.Instance.PlayPhoneHangup();
+                                TriggerAutosaveIndicator("INCIDENT #1042 ARCHIVED // AUTOSAVED");
                                 StartTypewriter("YOU: \"A patrol car has been dispatched to 21 West Street.\"\n\n[ PATROL UNIT 12 DISPATCHED TO 21 WEST STREET. ETA: 8 MIN. ]\n[ PATROL UNITS REMAINING: " + State.AvailableUnits + " / " + Scenario.InitialUnits + " ]");
                                 _lblSupervisorBar.Text = "KRISHA: Unit dispatched. Remember: for routine noise, logging the report is usually sufficient to preserve our limited units.";
                                 UpdateQueueCards();
@@ -1406,7 +1573,7 @@ namespace StayOnTheLine.Forms
                             {
                                 call.Stage = CallStage.Inquiry;
                                 call.Status = CallQueueStatus.Live;
-                                AudioManager.Instance.PlayKeyClick();
+                                AudioManager.Instance.PlayPhonePickup();
                                 StartTypewriter(call.InitialDialogue);
                                 _lblSupervisorBar.Text = "KRISHA: Active home intrusion! Keep her calm, identify who and where she is, and inspect the sector archive immediately!";
                                 UpdateQueueCards();
@@ -1433,8 +1600,8 @@ namespace StayOnTheLine.Forms
                                     _lblLocation.Text = $"LOCATION: {call.DisplayLocation}";
                                     call.TrustPercentage = Math.Min(100, call.TrustPercentage + 15);
                                     call.PanicPercentage = Math.Max(20, call.PanicPercentage - 10);
-                                    _lblTrust.Text = $"TRUST: {call.TrustPercentage}%";
-                                    _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
+                                    UpdateTelemetryDisplay(call);
+                                    AudioManager.Instance.PlayCallerScream();
                                     AudioManager.Instance.PlayTypewriterKeystroke();
                                     StartTypewriter("YOU: \"Ma'am, take a deep breath. I need your name and exact address so I can get officers moving.\"\n\nCALLER: \"Chloe! Chloe Bautista! I'm at 14 Bell Street! The back patio door glass was smashed downstairs!\"");
                                     _lblSupervisorBar.Text = "KRISHA: Chloe Bautista at 14 Bell Street. Keep her calm, instruct her to hide, and check the archive records!";
@@ -1475,8 +1642,7 @@ namespace StayOnTheLine.Forms
                                         call.TrustPercentage = Math.Min(100, call.TrustPercentage + 20);
                                         _reassuranceCooldownSeconds = 15;
                                         _reassuranceCooldownTimer.Start();
-                                        _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
-                                        _lblTrust.Text = $"TRUST: {call.TrustPercentage}%";
+                                        UpdateTelemetryDisplay(call);
                                         AudioManager.Instance.PlayKeyClick();
                                         StartTypewriter("YOU: \"Chloe, listen carefully. Stay hidden in the closet, keep your phone pressed close, and do not make a sound. We are dispatching help right now.\"\n\nCHLOE: \"(Whispering) I'm tucked behind the winter coats... I hear heavy steps on the stairs... please hurry...\"");
                                         _lblSupervisorBar.Text = "KRISHA: You calmed her down. Now check the incident archive before dispatching!";
@@ -1495,6 +1661,7 @@ namespace StayOnTheLine.Forms
                                 OnClick = () =>
                                 {
                                     call.Stage = CallStage.DiscrepancyChoice;
+                                    AudioManager.Instance.PlayPrinterRattle();
                                     AudioManager.Instance.PlayFrequencyBlip();
                                     StartTypewriter("CRITICAL SYSTEM DISCREPANCY DETECTED\nSTATION RECORD #2196 MODIFIED: 01:42 AM.\nINCOMING CALL RECEIVED: 02:16 AM.\nDISCREPANCY: RECORD WAS MODIFIED 34 MINUTES BEFORE CALL WAS RECEIVED!\nREGISTERED ADDRESS: 41 BELL AVE // REPORTED LOCATION: 14 BELL ST.");
                                     _lblSupervisorBar.Text = "KRISHA: Wait a second... that record was modified thirty-four minutes before this call even rang! How is that possible?! Flag that discrepancy!";
@@ -1560,6 +1727,8 @@ namespace StayOnTheLine.Forms
                                 State.AvailableUnits -= (State.AvailableUnits >= 2 ? 2 : 1);
                                 State.CallsLogged++;
                                 AudioManager.Instance.PlayInkStamp();
+                                AudioManager.Instance.PlayPhoneHangup();
+                                TriggerAutosaveIndicator("INCIDENT #1043 ARCHIVED // AUTOSAVED");
                                 StartTypewriter(
                                     "YOU: \"Officers are responding with lights and sirens, Chloe. Stay down and keep quiet.\"\n\n" +
                                     "[ UNITS 08 & 14 DISPATCHED UNDER CODE 3 TO 14 BELL STREET. ETA: 6 SECONDS. ]\n\n" +
@@ -1604,7 +1773,7 @@ namespace StayOnTheLine.Forms
                             {
                                 call.Stage = CallStage.Inquiry;
                                 call.Status = CallQueueStatus.Live;
-                                AudioManager.Instance.PlayKeyClick();
+                                AudioManager.Instance.PlayPhonePickup();
                                 StartTypewriter(call.InitialDialogue);
                                 _lblSupervisorBar.Text = "KRISHA: Suspicious vehicle report. Verify details and determine if this warrants our limited patrol units.";
                                 UpdateQueueCards();
@@ -1630,7 +1799,7 @@ namespace StayOnTheLine.Forms
                                     _lblCallerName.Text = $"▸ {call.DisplayName} ({call.CallId})";
                                     _lblLocation.Text = $"LOCATION: {call.DisplayLocation}";
                                     call.TrustPercentage = Math.Min(100, call.TrustPercentage + 10);
-                                    _lblTrust.Text = $"TRUST: {call.TrustPercentage}%";
+                                    UpdateTelemetryDisplay(call);
                                     AudioManager.Instance.PlayTypewriterKeystroke();
                                     StartTypewriter("YOU: \"This is emergency dispatch. Please state your name and location for the log.\"\n\nMARCUS: \"Marcus Reed. I live at 88 Elm Ridge Road. There's a car parked right outside my gate.\"");
                                     _lblSupervisorBar.Text = "KRISHA: Marcus Reed, 88 Elm Ridge Road. Now ask for a vehicle description or check sector logs.";
@@ -1675,7 +1844,7 @@ namespace StayOnTheLine.Forms
                                 OnClick = () =>
                                 {
                                     call.Stage = CallStage.Resolution;
-                                    AudioManager.Instance.PlayTypewriterKeystroke();
+                                    AudioManager.Instance.PlayPrinterRattle();
                                     StartTypewriter("STATION ARCHIVE #0882: 88 ELM RIDGE ROAD\nSECTOR: NORTH SUBURBAN PERIMETER.\nNOTE: RESIDENCE ACROSS THE ROAD (89 ELM RIDGE) HAS BEEN VACANT FOR SIX WEEKS. NO CURRENT OCCUPANCY PERMITS.");
                                     _lblSupervisorBar.Text = "KRISHA: An abandoned farmhouse across the road. Now decide: dispatch your remaining unit or log a suspicious vehicle report.";
                                     UpdateDynamicChoices();
@@ -1699,6 +1868,8 @@ namespace StayOnTheLine.Forms
                                 if (State.AvailableUnits > 0) State.AvailableUnits--;
                                 State.CallsLogged++;
                                 AudioManager.Instance.PlayInkStamp();
+                                AudioManager.Instance.PlayPhoneHangup();
+                                TriggerAutosaveIndicator("INCIDENT #1044 ARCHIVED // AUTOSAVED");
                                 StartTypewriter("[ PATROL UNIT 04 DISPATCHED TO 88 ELM RIDGE ROAD. ]\n\n[ RADIO SQUELCH: \"Unit 04 arriving... dark sedan is gone. Fresh tire tracks lead north toward the highway.\" ]\n[ CALL RESOLVED. STATUS: ARCHIVED. ]");
                                 _lblSupervisorBar.Text = "KRISHA: Unit 04 arrived, vehicle fled. You burned our last patrol car on a stationary vehicle—good community vigilance, but be careful with resource management.";
                                 UpdateQueueCards();
@@ -1718,6 +1889,8 @@ namespace StayOnTheLine.Forms
                                 call.Status = CallQueueStatus.Resolved;
                                 State.CallsLogged++;
                                 AudioManager.Instance.PlayInkStamp();
+                                AudioManager.Instance.PlayPhoneHangup();
+                                TriggerAutosaveIndicator("INCIDENT #1044 ARCHIVED // AUTOSAVED");
                                 StartTypewriter("YOU: \"We've logged the dark sedan description for the morning sector sweep, Mr. Reed. Lock your doors and call us if they approach your property.\"\n\nMARCUS: \"Understood. Thank you, dispatcher.\"\n\n[ INCIDENT LOGGED AS SUSPICIOUS VEHICLE. PATROL CAPACITY PRESERVED: " + State.AvailableUnits + " / " + Scenario.InitialUnits + " ]\n[ CALL RESOLVED. STATUS: ARCHIVED. ]");
                                 _lblSupervisorBar.Text = "KRISHA: Outstanding judgment. You preserved our patrol reserve while keeping the neighborhood monitored.";
                                 UpdateQueueCards();
@@ -1877,7 +2050,7 @@ namespace StayOnTheLine.Forms
                                 () =>
                                 {
                                     call.PanicPercentage = Math.Max(20, call.PanicPercentage - 10);
-                                    _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
+                                    UpdateTelemetryDisplay(call);
                                 }, recommended: true));
                         }
                         if (!Shift2Asked("c2.address"))
@@ -2148,6 +2321,7 @@ namespace StayOnTheLine.Forms
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            AudioManager.Instance.StopGameplayAtmosphere();
             AudioManager.Instance.StopPhoneRing();
             base.OnFormClosed(e);
         }
@@ -2171,7 +2345,7 @@ namespace StayOnTheLine.Forms
             {
                 call.Stage = CallStage.Inquiry;
                 call.Status = CallQueueStatus.Live;
-                AudioManager.Instance.PlayKeyClick();
+                AudioManager.Instance.PlayPhonePickup();
                 StartTypewriter(call.InitialDialogue);
                 if (call.SupervisorHint.Length > 0) _lblSupervisorBar.Text = call.SupervisorHint;
                 UpdateQueueCards();
@@ -2343,11 +2517,7 @@ namespace StayOnTheLine.Forms
                 {
                     call.PanicPercentage = Math.Min(100, call.PanicPercentage + 4);
                     call.TrustPercentage = Math.Max(10, call.TrustPercentage - 1);
-                    _lblPanic.Text = $"PANIC: {call.PanicPercentage}%";
-                    _lblTrust.Text = $"TRUST: {call.TrustPercentage}%";
-                    _lblPanic.ForeColor = (call.PanicPercentage >= 80)
-                        ? Color.FromArgb(255, 90, 90)
-                        : Color.FromArgb(255, 180, 120);
+                    UpdateTelemetryDisplay(call);
                 }
             }
         }
@@ -2443,18 +2613,22 @@ namespace StayOnTheLine.Forms
         {
             string t = line.TrimStart();
             return t.StartsWith("CHARM:", StringComparison.OrdinalIgnoreCase) ||
-                   t.StartsWith("CHARMEE:", StringComparison.OrdinalIgnoreCase);
+                   t.StartsWith("CHARMEE:", StringComparison.OrdinalIgnoreCase) ||
+                   t.StartsWith("CHARM CANTONES:", StringComparison.OrdinalIgnoreCase) ||
+                   t.StartsWith("CHARMEE CANTONES:", StringComparison.OrdinalIgnoreCase);
         }
 
         // Stage directions about the room (not the phone line) belong with Charmee's pop-up
-        private static bool IsRoomNarration(string line)
+        private bool IsRoomNarration(string line)
         {
             string t = line.Trim();
             return t.StartsWith("[") &&
                    (t.Contains("Charm", StringComparison.OrdinalIgnoreCase) ||
+                    t.Contains("Charmee", StringComparison.OrdinalIgnoreCase) ||
                     t.StartsWith("[She ", StringComparison.Ordinal) ||
                     t.StartsWith("[Her ", StringComparison.Ordinal) ||
-                    t.StartsWith("[You ", StringComparison.Ordinal));
+                    t.StartsWith("[You ", StringComparison.Ordinal) ||
+                    (Profile != null && t.StartsWith($"[{Profile.OperatorName} ", StringComparison.OrdinalIgnoreCase)));
         }
 
         private Image? CharmPortraitFor(string line)
@@ -2467,6 +2641,11 @@ namespace StayOnTheLine.Forms
                 (l.Contains("don't worry") || l.Contains("coffee") || l.Contains("here for") || l.Contains("coworkers") ||
                  l.Contains("okay?") || l.Contains("good.") || l.Contains("right here")) ? "smile" :
                 "default";
+
+            if (expression == "giggle")
+            {
+                AudioManager.Instance.PlayCharmGiggle();
+            }
 
             if (!_charmPortraits.TryGetValue(expression, out var img))
             {
@@ -2626,6 +2805,8 @@ namespace StayOnTheLine.Forms
         /// </param>
         private void StartTypewriter(string text, bool charmAtConsole = false)
         {
+            _typewriterTimer.Interval = Math.Max(1, SettingsManager.Instance.Current.GetDelayPerCharacterMs());
+
             // A new response supersedes whatever was still waiting to play; finish printing the
             // current reply first so it isn't left cut off mid-word
             if (_typewriterTimer.Enabled)
@@ -2653,6 +2834,22 @@ namespace StayOnTheLine.Forms
             PlayNextSegment();
         }
 
+        private void SkipTypewriter()
+        {
+            if (_typewriterTimer.Enabled)
+            {
+                _displayedDialogue = _targetDialogue;
+                _typewriterCharIndex = _targetDialogue.Length;
+                _lblCallTranscript.Text = _displayedDialogue;
+                _typewriterTimer.Stop();
+                int visibleH = _pnlTranscriptScroll.ClientSize.Height;
+                int totalH = _lblCallTranscript.Height + 16;
+                _transcriptScrollY = Math.Max(0, totalH - visibleH);
+                _lblCallTranscript.Location = new Point(14, 8 - _transcriptScrollY);
+                PlayNextSegment();
+            }
+        }
+
         private void UpdateTypewriter()
         {
             if (_typewriterCharIndex < _targetDialogue.Length)
@@ -2676,7 +2873,7 @@ namespace StayOnTheLine.Forms
                 _transcriptScrollY = maxScroll;
                 _lblCallTranscript.Location = new Point(14, 8 - _transcriptScrollY);
 
-                if (_typewriterCharIndex % 5 == 0)
+                if (_typewriterCharIndex % 2 == 0)
                 {
                     AudioManager.Instance.PlayTypewriterKeystroke();
                 }
@@ -2723,6 +2920,22 @@ namespace StayOnTheLine.Forms
             for (int y = 0; y < rc.Height; y += 3)
             {
                 g.DrawLine(scanPen, 0, y, rc.Width, y);
+            }
+
+            // 3. Screen Edge Pulse on Extreme Caller Danger (>80% Panic)
+            if (CurrentCall is { PanicPercentage: >= 80 })
+            {
+                int alpha = _pulseHighlight ? 120 : 50;
+                using var redPath = new GraphicsPath();
+                redPath.AddRectangle(rc);
+                using var redPgb = new PathGradientBrush(redPath);
+                redPgb.CenterColor = Color.FromArgb(0, 255, 0, 0);
+                redPgb.SurroundColors = new[] { Color.FromArgb(alpha, 220, 25, 25) };
+                redPgb.FocusScales = new PointF(0.85f, 0.80f);
+                g.FillRectangle(redPgb, rc);
+
+                using var alertPen = new Pen(Color.FromArgb(_pulseHighlight ? 140 : 60, 255, 50, 50), 2f);
+                g.DrawRectangle(alertPen, 1, 1, rc.Width - 2, rc.Height - 2);
             }
         }
 
@@ -2898,6 +3111,22 @@ namespace StayOnTheLine.Forms
                 return;
             }
 
+            if (_pnlPauseMenu != null && _pnlPauseMenu.Visible)
+            {
+                _pnlPauseMenu.Bounds = ClientRectangle;
+                _pnlPauseMenu.BringToFront();
+                LayoutPauseMenu();
+            }
+
+            if (_lblAutosaveBadge != null)
+            {
+                int badgeW = (int)(280 * Math.Clamp(ClientSize.Height / 1080f, 0.8f, 1.4f));
+                int badgeH = (int)(32 * Math.Clamp(ClientSize.Height / 1080f, 0.8f, 1.4f));
+                _lblAutosaveBadge.Size = new Size(badgeW, badgeH);
+                _lblAutosaveBadge.Location = new Point(ClientSize.Width - badgeW - 24, 14);
+                if (_lblAutosaveBadge.Visible) _lblAutosaveBadge.BringToFront();
+            }
+
             int W = ClientSize.Width;
             int H = ClientSize.Height;
             float deskScale = H / 1080f;
@@ -2966,6 +3195,7 @@ namespace StayOnTheLine.Forms
                         if (deskFontsChanged) _lblDeskStickyNote.Font = FontManager.GetSmallCapsFont(Math.Max(6f, 3.6f * factor), FontStyle.Bold);
                         _lblDeskStickyNote.Location = new Point(imgRect.X + (int)(524 * factor), imgRect.Y + (int)(424 * factor));
                         _lblDeskStickyNote.Size = new Size((int)(64 * factor), (int)(34 * factor));
+                        _lblDeskStickyNote.Text = GetStickyNoteText();
                     }
                 }
                 else
@@ -3188,6 +3418,7 @@ namespace StayOnTheLine.Forms
         public void ShowDebriefModal()
         {
             AudioManager.Instance.StopPhoneRing();
+            AudioManager.Instance.StopGameplayAtmosphere();
             _scriptSegments.Clear();
             _charmDialogue.Clear();
             _pnlCrtScreen.Visible = false;
@@ -3485,10 +3716,37 @@ namespace StayOnTheLine.Forms
                     if (i < _calls.Count - 1)
                         g.DrawLine(hairPen, contentX + numW, ry + rowH2, contentX + contentW, ry + rowH2);
                 }
+                currY += _calls.Count * rowH2 + (int)(6 * scale);
 
                 // Footer pinned just above the buttons
                 int footerBtnH = Math.Clamp((int)(40 * scale), 34, 44);
                 int footerY = paperBottom - footerBtnH - (int)(12 * scale) - (int)(48 * scale);
+
+                // Supervisor Margin Notes & Personalized Shift Debriefs
+                int marginBoxY = currY + (int)(4 * scale);
+                int marginBoxH = footerY - marginBoxY - (int)(8 * scale);
+                if (marginBoxH > (int)(24 * scale))
+                {
+                    var marginRect = new Rectangle(contentX, marginBoxY, contentW, marginBoxH);
+                    using var noteBgBrush = new SolidBrush(Color.FromArgb(25, 40, 30, 10));
+                    using var noteBorderPen = new Pen(Color.FromArgb(100, 130, 110, 80), 1f) { DashStyle = DashStyle.Dash };
+                    g.FillRectangle(noteBgBrush, marginRect);
+                    g.DrawRectangle(noteBorderPen, marginRect);
+
+                    using var fontMarginTag = FontManager.GetSmallCapsFont(8f * scale, FontStyle.Bold);
+                    TextRenderer.DrawText(g, "✎ SUPERVISOR MARGIN NOTE // DIRECTIVE AUDIT", fontMarginTag,
+                        new Rectangle(contentX + (int)(6 * scale), marginBoxY + (int)(3 * scale), contentW - (int)(12 * scale), (int)(14 * scale)),
+                        Color.FromArgb(150, 45, 35), TextFormatFlags.Left | oneLine);
+
+                    string marginNote = GetPersonalizedMarginNote();
+                    using var fontMarginText = FontManager.GetItalicFont(10.5f * scale);
+                    int textY = marginBoxY + (int)(16 * scale);
+                    int textH = marginBoxH - (int)(19 * scale);
+                    TextRenderer.DrawText(g, marginNote, fontMarginText,
+                        new Rectangle(contentX + (int)(8 * scale), textY, contentW - (int)(16 * scale), textH),
+                        Color.FromArgb(30, 24, 75), TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                }
+
                 g.DrawLine(rulePen, contentX, footerY, contentX + contentW, footerY);
                 footerY += (int)(8 * scale);
 
@@ -3638,8 +3896,25 @@ namespace StayOnTheLine.Forms
                     $"Your assignment to Shift {Scenario.ShiftNumber + 1:D2} has been registered in the station ledger.",
                     "CLOCK OUT");
 
+                var blackOverlay = new Panel
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = Color.Black
+                };
+                this.Controls.Add(blackOverlay);
+                blackOverlay.BringToFront();
+                blackOverlay.Update();
+
                 this.DialogResult = DialogResult.OK;
-                this.Close();
+
+                if (OnShiftTransitionRequested != null && Systems.ShiftScenarioFactory.HasScenario(Profile.CurrentShift))
+                {
+                    OnShiftTransitionRequested(Profile);
+                }
+                else
+                {
+                    this.Close();
+                }
             };
 
             btnReturn.MouseEnter += (s, e) =>
@@ -3655,6 +3930,7 @@ namespace StayOnTheLine.Forms
                 _shiftTimer.Start();
                 if (_activeCallIndex == 1) _panicDecayTimer.Start();
                 if (Scenario.HasTutorialGuidance) _tutorialPulseTimer.Start();
+                AudioManager.Instance.StartGameplayAtmosphere();
                 SwitchView(ViewState.ComputerTerminal);
             };
 
@@ -3822,6 +4098,388 @@ namespace StayOnTheLine.Forms
             return y + stampH;
         }
 
+        private int DrawDossierLeftPage(Graphics g, Rectangle page, float s, bool draw)
+        {
+            using var fontTitle = FontManager.GetSmallCapsFont(22f * s, FontStyle.Bold);
+            using var fontSub = FontManager.GetSmallCapsFont(11.5f * s);
+            using var fontSection = FontManager.GetSmallCapsFont(15f * s, FontStyle.Bold);
+            using var fontCode = FontManager.GetSmallCapsFont(13.5f * s, FontStyle.Bold);
+            using var fontBody = FontManager.GetSmallCapsFont(12.5f * s);
+            using var fontNote = FontManager.GetSmallCapsFont(12f * s);
+
+            int x = page.X, w = page.Width;
+            int y = page.Y;
+
+            y = DrawBookText(g, "Incident Evidence Dossier", fontTitle, BookInkDark, x, y, w, draw);
+            y = DrawBookText(g, $"Station 04 Archive · Operator {Profile.OperatorName.ToUpperInvariant()} · Confidential", fontSub, BookInkSub, x, y + (int)(2 * s), w, draw);
+            y += (int)(24 * s);
+
+            y = DrawBookSection(g, "A · Field Telemetry Discrepancies", fontSection, x, y, w, s, draw);
+
+            var entries = new List<(string Code, string Title, string Desc)>();
+            if (Profile.AnomalyFlags.Contains("BellStreetTimestampParadox"))
+                entries.Add(("REC-014", "Bell St Timestamp Slip", "Caller reported noise at 02:14; dispatch archive logged arrival at 02:28. A 14-minute temporal gap in precinct audio trunk."));
+            if (Profile.AnomalyFlags.Contains("ChangingDistance"))
+                entries.Add(("REC-042", "Highway 4 Distance Flux", "Patrol cruiser telemetry reported 8 miles to scene, then 14 miles two minutes later. Odometer inconsistent."));
+            if (Profile.AnomalyFlags.Contains("ChloeKrishaConnection"))
+                entries.Add(("REC-077", "Line 08 Audio Bleed", "Chloe Bautista's emergency trunk routed on channel 02 leaked telemetry matching sealed 1978 Line 08 frequency."));
+            if (Profile.AnomalyFlags.Contains("MapleStreetTimestamp"))
+                entries.Add(("REC-109", "Maple St Telemetry Desync", "Archive incident timestamp desynchronized with caller telemetry clock by 37 minutes."));
+
+            if (entries.Count == 0)
+            {
+                y = DrawBookText(g, "[ NO TELEMETRY PARADOXES FLAGGED YET ]\nCross-examine caller statements and compare with station log archives. When discrepancies occur, flag them during calls to log evidence here.", fontNote, BookInkSub, x, y, w, draw);
+                y += (int)(16 * s);
+            }
+            else
+            {
+                foreach (var (code, title, desc) in entries)
+                {
+                    y = DrawBookEntry(g, $"[{code}]", title, fontCode, fontCode, x, y, (int)(88 * s), w, draw, Color.FromArgb(160, 35, 25)) + (int)(2 * s);
+                    y = DrawBookText(g, desc, fontBody, BookInkSub, x + (int)(20 * s), y, w - (int)(20 * s), draw);
+                    y += (int)(10 * s);
+                }
+            }
+
+            return y;
+        }
+
+        private int DrawDossierRightPage(Graphics g, Rectangle page, float s, bool draw)
+        {
+            using var fontTitle = FontManager.GetSmallCapsFont(22f * s, FontStyle.Bold);
+            using var fontSub = FontManager.GetSmallCapsFont(11.5f * s);
+            using var fontSection = FontManager.GetSmallCapsFont(15f * s, FontStyle.Bold);
+            using var fontCode = FontManager.GetSmallCapsFont(13.5f * s, FontStyle.Bold);
+            using var fontBody = FontManager.GetSmallCapsFont(12.5f * s);
+            using var fontNote = FontManager.GetSmallCapsFont(12f * s);
+
+            int x = page.X, w = page.Width;
+            int y = page.Y;
+
+            y = DrawBookText(g, "Classified Station Ledger", fontTitle, BookInkDark, x, y, w, draw);
+            y = DrawBookText(g, "Internal Audit & Purged Records Division", fontSub, BookInkSub, x, y + (int)(2 * s), w, draw);
+            y += (int)(24 * s);
+
+            y = DrawBookSection(g, "B · Recovered Audit Artifacts", fontSection, x, y, w, s, draw);
+
+            var artifacts = new List<(string Code, string Title, string Desc)>();
+            if (Profile.AnomalyFlags.Contains("Shift3AuditEntryPreserved"))
+                artifacts.Add(("AUD-03", "Purged Terminal Ledger", "Internal audit snippet preserved prior to sync purge. Confirms ghost patrol unit operating under sealed supervisor credentials."));
+            if (Profile.AnomalyFlags.Contains("ChloeRecordingPreserved"))
+                artifacts.Add(("AUD-04", "Dispatch Tape #402", "Recovered cassette from sub-basement. Audio matches previous shift supervisor Krisha before her disappearance."));
+            if (Profile.AnomalyFlags.Contains("BELL_STREET_ADDRESS"))
+                artifacts.Add(("CAD-21", "West St Cadastral Survey", "21 West Street is registered as a demolished lot since 1984, yet callers continue to dial from Apt 5B."));
+
+            if (artifacts.Count == 0)
+            {
+                y = DrawBookText(g, "[ NO CLASSIFIED ARTIFACTS RECOVERED ]\nInspect room props, listen to cassette tapes, and verify questionable records to unearth sealed precinct evidence.", fontNote, BookInkSub, x, y, w, draw);
+                y += (int)(16 * s);
+            }
+            else
+            {
+                foreach (var (code, title, desc) in artifacts)
+                {
+                    y = DrawBookEntry(g, $"[{code}]", title, fontCode, fontCode, x, y, (int)(88 * s), w, draw, Color.FromArgb(40, 50, 110)) + (int)(2 * s);
+                    y = DrawBookText(g, desc, fontBody, BookInkSub, x + (int)(20 * s), y, w - (int)(20 * s), draw);
+                    y += (int)(10 * s);
+                }
+            }
+
+            // Evidence Status Box at bottom of page
+            y += (int)(10 * s);
+            int totalClues = Profile.AnomalyFlags.Count(f =>
+                f.Contains("Paradox") || f.Contains("Distance") || f.Contains("Preserved") ||
+                f.Contains("Recording") || f.Contains("Connection") || f.Contains("Timestamp"));
+
+            y = DrawBookSection(g, "C · Clearance Summary", fontSection, x, y, w, s, draw);
+            y = DrawBookText(g, $"• Station Shift: Shift {Scenario.ShiftNumber:D2}\n• Total Paradoxes Tracked: {totalClues}\n• Clearance Status: {(totalClues >= 2 ? "HIGH ANOMALY INDEX (AUDIT PENDING)" : "STANDARD WATCH")}", fontNote, BookInkDark, x, y, w, draw);
+
+            // Red Evidence Stamp
+            y += (int)(12 * s);
+            using var fontStamp = FontManager.GetSmallCapsFont(12.5f * s, FontStyle.Bold);
+            const string stampText = "EVIDENCE DOSSIER · CONFIDENTIAL";
+            var stampSize = TextRenderer.MeasureText(g, stampText, fontStamp, Size.Empty, TextFormatFlags.NoPrefix);
+            int stampW = Math.Min(w, stampSize.Width + (int)(26 * s));
+            int stampH = stampSize.Height + (int)(12 * s);
+            if (draw)
+            {
+                var stampRect = new Rectangle(x + w - stampW, y, stampW, stampH);
+                var state = g.Save();
+                g.TranslateTransform(stampRect.X + stampW / 2f, stampRect.Y + stampH / 2f);
+                g.RotateTransform(-4f);
+                var local = new Rectangle(-stampW / 2, -stampH / 2, stampW, stampH);
+                using var stampPen = new Pen(Color.FromArgb(180, 170, 30, 30), Math.Max(1.5f, 2f * s));
+                g.DrawRectangle(stampPen, local);
+                using var stampBrush = new SolidBrush(Color.FromArgb(195, 170, 30, 30));
+                using var stampFormat = new StringFormat
+                {
+                    Alignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center,
+                    FormatFlags = StringFormatFlags.NoWrap
+                };
+                g.DrawString(stampText, fontStamp, stampBrush, local, stampFormat);
+                g.Restore(state);
+            }
+
+            return y + stampH;
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // AUTOSAVE HUD & PROTOCOL PAUSE MENU
+        // ══════════════════════════════════════════════════════════════
+        private void InitializeAutosaveBadge()
+        {
+            _lblAutosaveBadge = new Label
+            {
+                Text = "💾 DISPATCH LOGGED // AUTOSAVED",
+                ForeColor = Color.FromArgb(140, 255, 170),
+                BackColor = Color.FromArgb(230, 8, 28, 14),
+                Font = FontManager.GetSmallCapsFont(11f, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(270, 32),
+                Visible = false,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            Controls.Add(_lblAutosaveBadge);
+
+            _autosaveFadeTimer.Tick += (s, e) =>
+            {
+                _autosaveFadeTimer.Stop();
+                if (_lblAutosaveBadge != null)
+                {
+                    _lblAutosaveBadge.Visible = false;
+                }
+            };
+        }
+
+        public void TriggerAutosaveIndicator(string message = "DISPATCH LOGGED // AUTOSAVED")
+        {
+            try
+            {
+                Profile.LastPlayedTimestamp = DateTime.Now;
+                SaveManager.Instance.SaveProfile(Profile);
+
+                if (_lblAutosaveBadge != null)
+                {
+                    _lblAutosaveBadge.Text = $"💾 {message}";
+                    _lblAutosaveBadge.BringToFront();
+                    _lblAutosaveBadge.Visible = true;
+                    _lblAutosaveBadge.Invalidate();
+                    _autosaveFadeTimer.Stop();
+                    _autosaveFadeTimer.Start();
+                }
+                AudioManager.Instance.PlayFrequencyBlip();
+            }
+            catch { }
+        }
+
+        public void ShowPauseMenu()
+        {
+            if (_pnlDebriefModal != null && _pnlDebriefModal.Visible) return;
+            if (_pnlManualModal != null && _pnlManualModal.Visible) _pnlManualModal.Visible = false;
+
+            if (_pnlPauseMenu == null)
+            {
+                _pnlPauseMenu = new Panel
+                {
+                    BackColor = Color.FromArgb(220, 6, 12, 8),
+                    Visible = false
+                };
+                EnableDoubleBuffering(_pnlPauseMenu);
+
+                _pnlPauseCard = new Panel
+                {
+                    BackColor = Color.FromArgb(245, 14, 20, 16),
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+                EnableDoubleBuffering(_pnlPauseCard);
+
+                var lblPauseTitle = new Label
+                {
+                    Text = "═  STATION 44  //  PROTOCOL HOLD  ═",
+                    ForeColor = Color.FromArgb(160, 255, 180),
+                    BackColor = Color.Transparent,
+                    Font = FontManager.GetSmallCapsFont(16f, FontStyle.Bold),
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Dock = DockStyle.Top,
+                    Height = 48
+                };
+
+                _lblPauseSubtitle = new Label
+                {
+                    Text = $"SHIFT {Scenario.ShiftNumber:D2} SUSPENDED   ·   OPERATOR: {Profile.OperatorName.ToUpperInvariant()}",
+                    ForeColor = Color.FromArgb(210, 225, 210),
+                    BackColor = Color.Transparent,
+                    Font = FontManager.GetSmallCapsFont(12f, FontStyle.Regular),
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Dock = DockStyle.Top,
+                    Height = 28
+                };
+
+                _lblPauseMeta = new Label
+                {
+                    Text = $"DISPATCHES: {State.CallsLogged} / {_calls.Count} COMPLETED   ·   PATROL UNITS READY: {State.AvailableUnits}",
+                    ForeColor = Color.FromArgb(140, 180, 150),
+                    BackColor = Color.Transparent,
+                    Font = FontManager.GetItalicFont(11f),
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Dock = DockStyle.Top,
+                    Height = 26
+                };
+
+                var lblPauseFooter = new Label
+                {
+                    Text = "[ESC] RESUME DUTY   ·   CURRENT PROGRESS RECORDED TO ACTIVE SHIFT LEDGER",
+                    ForeColor = Color.FromArgb(120, 140, 125),
+                    BackColor = Color.Transparent,
+                    Font = FontManager.GetSmallCapsFont(10.5f, FontStyle.Regular),
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Dock = DockStyle.Bottom,
+                    Height = 36
+                };
+
+                _pnlPauseCard.Controls.Add(_lblPauseMeta);
+                _pnlPauseCard.Controls.Add(_lblPauseSubtitle);
+                _pnlPauseCard.Controls.Add(lblPauseTitle);
+                _pnlPauseCard.Controls.Add(lblPauseFooter);
+
+                var (btnResume, btnManual, btnSettings, btnSaveQuit) = CreatePauseMenuButtons();
+                _pnlPauseCard.Controls.Add(btnResume);
+                _pnlPauseCard.Controls.Add(btnManual);
+                _pnlPauseCard.Controls.Add(btnSettings);
+                _pnlPauseCard.Controls.Add(btnSaveQuit);
+
+                _pnlPauseMenu.Controls.Add(_pnlPauseCard);
+                Controls.Add(_pnlPauseMenu);
+            }
+
+            if (_lblPauseSubtitle != null)
+                _lblPauseSubtitle.Text = $"SHIFT {Scenario.ShiftNumber:D2} SUSPENDED   ·   OPERATOR: {Profile.OperatorName.ToUpperInvariant()}   ·   {DateTime.Now:hh:mm tt}";
+            if (_lblPauseMeta != null)
+                _lblPauseMeta.Text = $"DISPATCHES: {State.CallsLogged} / {_calls.Count} COMPLETED   ·   PATROL UNITS READY: {State.AvailableUnits}   ·   TRUST: {Profile.TrustScore}%";
+
+            _pnlPauseMenu.Bounds = ClientRectangle;
+            LayoutPauseMenu();
+            _pnlPauseMenu.Visible = true;
+            _pnlPauseMenu.BringToFront();
+            AudioManager.Instance.PlayPaperRustle();
+        }
+
+        public void HidePauseMenu()
+        {
+            if (_pnlPauseMenu != null && _pnlPauseMenu.Visible)
+            {
+                _pnlPauseMenu.Visible = false;
+                AudioManager.Instance.PlayClick();
+            }
+        }
+
+        private (Label btnResume, Label btnManual, Label btnSettings, Label btnSaveQuit) CreatePauseMenuButtons()
+        {
+            Label MakeBtn(string text, Color fore, Color bg, Color hoverBg, Action onClick)
+            {
+                var lbl = new Label
+                {
+                    Text = text,
+                    ForeColor = fore,
+                    BackColor = bg,
+                    Font = FontManager.GetSmallCapsFont(12.5f, FontStyle.Bold),
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Cursor = Cursors.Hand,
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+                lbl.Click += (s, e) => onClick();
+                lbl.MouseEnter += (s, e) =>
+                {
+                    lbl.ForeColor = Color.White;
+                    lbl.BackColor = hoverBg;
+                    AudioManager.Instance.PlayFrequencyBlip();
+                };
+                lbl.MouseLeave += (s, e) =>
+                {
+                    lbl.ForeColor = fore;
+                    lbl.BackColor = bg;
+                };
+                return lbl;
+            }
+
+            var btnResume = MakeBtn(
+                "[ ▶ RESUME DISPATCH DUTY ]",
+                Color.FromArgb(160, 255, 180),
+                Color.FromArgb(200, 16, 42, 22),
+                Color.FromArgb(240, 26, 68, 36),
+                () => HidePauseMenu());
+
+            var btnManual = MakeBtn(
+                "[ 📖 DIRECTIVES & OPERATOR MANUAL ]",
+                Color.FromArgb(240, 225, 180),
+                Color.FromArgb(200, 38, 34, 22),
+                Color.FromArgb(240, 62, 54, 32),
+                () => { HidePauseMenu(); ShowDirectiveManualModal(); });
+
+            var btnSettings = MakeBtn(
+                "[ ⚙ AUDIO & TERMINAL SETTINGS ]",
+                Color.FromArgb(190, 220, 240),
+                Color.FromArgb(200, 22, 34, 44),
+                Color.FromArgb(240, 36, 54, 70),
+                () => OpenInGameSettings());
+
+            var btnSaveQuit = MakeBtn(
+                "[ 💾 SAVE & RETURN TO MAIN MENU ]",
+                Color.FromArgb(255, 175, 150),
+                Color.FromArgb(200, 48, 22, 22),
+                Color.FromArgb(240, 76, 32, 32),
+                () =>
+                {
+                    Profile.LastPlayedTimestamp = DateTime.Now;
+                    SaveManager.Instance.SaveProfile(Profile);
+                    AudioManager.Instance.PlayInkStamp();
+
+                    var blackOverlay = new Panel
+                    {
+                        Dock = DockStyle.Fill,
+                        BackColor = Color.Black
+                    };
+                    this.Controls.Add(blackOverlay);
+                    blackOverlay.BringToFront();
+                    blackOverlay.Update();
+
+                    this.DialogResult = DialogResult.Cancel;
+                    this.Close();
+                });
+
+            _pauseButtons.Clear();
+            _pauseButtons.AddRange(new[] { btnResume, btnManual, btnSettings, btnSaveQuit });
+
+            return (btnResume, btnManual, btnSettings, btnSaveQuit);
+        }
+
+        private void LayoutPauseMenu()
+        {
+            if (_pnlPauseMenu == null || _pnlPauseCard == null) return;
+
+            int W = ClientSize.Width;
+            int H = ClientSize.Height;
+            float scale = Math.Clamp(H / 1080f, 0.75f, 1.6f);
+
+            int cardW = Math.Min((int)(660 * scale), W - 40);
+            int cardH = Math.Min((int)(460 * scale), H - 40);
+            _pnlPauseCard.Size = new Size(cardW, cardH);
+            _pnlPauseCard.Location = new Point((W - cardW) / 2, (H - cardH) / 2);
+
+            int btnW = (int)(cardW * 0.82f);
+            int btnH = (int)(46 * scale);
+            int btnX = (cardW - btnW) / 2;
+            int startY = (int)(125 * scale);
+            int spacing = (int)(14 * scale);
+
+            for (int i = 0; i < _pauseButtons.Count; i++)
+            {
+                _pauseButtons[i].Size = new Size(btnW, btnH);
+                _pauseButtons[i].Location = new Point(btnX, startY + i * (btnH + spacing));
+            }
+        }
+
         private void ShowDirectiveManualModal()
         {
             if (_pnlManualModal != null)
@@ -3876,34 +4534,112 @@ namespace StayOnTheLine.Forms
                     var rightPage = new Rectangle(bookRect.X + (int)(1045 * scale), bookRect.Y + (int)(115 * scale), (int)(500 * scale), (int)(820 * scale));
 
                     // Lay the pages out at a comfortable reading size, shrinking only if a page would overflow
-                    // Start large and step down to the biggest size that still fits both pages,
-                    // so the text fills the book instead of leaving empty space below it
                     float textScale = 1.6f;
                     int fitBottom = leftPage.Bottom - (int)(30 * scale);
                     while (textScale > 0.6f &&
-                           (DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: false) > fitBottom ||
-                            DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: false) > fitBottom))
+                           ((_manualTab == 0 && (DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: false) > fitBottom ||
+                                                 DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: false) > fitBottom)) ||
+                            (_manualTab == 1 && (DrawDossierLeftPage(g, leftPage, scale * textScale, draw: false) > fitBottom ||
+                                                 DrawDossierRightPage(g, rightPage, scale * textScale, draw: false) > fitBottom))))
                     {
                         textScale -= 0.05f;
                     }
 
-                    DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: true);
-                    DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: true);
+                    if (_manualTab == 0)
+                    {
+                        DrawDirectiveLeftPage(g, leftPage, scale * textScale, draw: true);
+                        DrawDirectiveRightPage(g, rightPage, scale * textScale, draw: true);
+                    }
+                    else
+                    {
+                        DrawDossierLeftPage(g, leftPage, scale * textScale, draw: true);
+                        DrawDossierRightPage(g, rightPage, scale * textScale, draw: true);
+                    }
                 }
             };
 
-            // Close button: [ Close Directive Manual ]
+            int totalClues = Profile.AnomalyFlags.Count(f =>
+                f.Contains("Paradox") || f.Contains("Distance") || f.Contains("Preserved") ||
+                f.Contains("Recording") || f.Contains("Connection") || f.Contains("Timestamp"));
+
+            var btnTabProtocols = new Label
+            {
+                Text = "[ 📖 DIRECTIVE PROTOCOLS ]",
+                TextAlign = ContentAlignment.MiddleCenter,
+                BorderStyle = BorderStyle.FixedSingle,
+                Cursor = Cursors.Hand
+            };
+
+            var btnTabDossier = new Label
+            {
+                Text = totalClues > 0 ? $"[ 📁 EVIDENCE DOSSIER ({totalClues}) ]" : "[ 📁 EVIDENCE DOSSIER ]",
+                TextAlign = ContentAlignment.MiddleCenter,
+                BorderStyle = BorderStyle.FixedSingle,
+                Cursor = Cursors.Hand
+            };
+
             var btnCloseManual = new Label
             {
-                Text = "[ CLOSE DIRECTIVE MANUAL / ESC ]",
+                Text = "[ CLOSE / ESC ]",
                 ForeColor = Color.FromArgb(28, 22, 16),
                 BackColor = Color.FromArgb(235, 220, 190),
                 BorderStyle = BorderStyle.FixedSingle,
-                Font = FontManager.GetSmallCapsFont(12f, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(300, 46),
                 Cursor = Cursors.Hand
             };
+
+            void UpdateTabButtonStyles()
+            {
+                if (_manualTab == 0)
+                {
+                    btnTabProtocols.BackColor = Color.FromArgb(48, 36, 26);
+                    btnTabProtocols.ForeColor = Color.FromArgb(245, 235, 215);
+                    btnTabDossier.BackColor = Color.FromArgb(235, 220, 190);
+                    btnTabDossier.ForeColor = Color.FromArgb(28, 22, 16);
+                }
+                else
+                {
+                    btnTabProtocols.BackColor = Color.FromArgb(235, 220, 190);
+                    btnTabProtocols.ForeColor = Color.FromArgb(28, 22, 16);
+                    btnTabDossier.BackColor = Color.FromArgb(48, 36, 26);
+                    btnTabDossier.ForeColor = Color.FromArgb(245, 235, 215);
+                }
+            }
+
+            UpdateTabButtonStyles();
+
+            btnTabProtocols.MouseEnter += (s, e) =>
+            {
+                if (_manualTab != 0) btnTabProtocols.BackColor = Color.FromArgb(215, 200, 170);
+            };
+            btnTabProtocols.MouseLeave += (s, e) => UpdateTabButtonStyles();
+            btnTabProtocols.Click += (s, e) =>
+            {
+                if (_manualTab != 0)
+                {
+                    _manualTab = 0;
+                    AudioManager.Instance.PlayPaperRustle();
+                    UpdateTabButtonStyles();
+                    _pnlManualModal.Invalidate();
+                }
+            };
+
+            btnTabDossier.MouseEnter += (s, e) =>
+            {
+                if (_manualTab != 1) btnTabDossier.BackColor = Color.FromArgb(215, 200, 170);
+            };
+            btnTabDossier.MouseLeave += (s, e) => UpdateTabButtonStyles();
+            btnTabDossier.Click += (s, e) =>
+            {
+                if (_manualTab != 1)
+                {
+                    _manualTab = 1;
+                    AudioManager.Instance.PlayPaperRustle();
+                    UpdateTabButtonStyles();
+                    _pnlManualModal.Invalidate();
+                }
+            };
+
             btnCloseManual.MouseEnter += (s, e) =>
             {
                 btnCloseManual.BackColor = Color.FromArgb(48, 36, 26);
@@ -3921,20 +4657,36 @@ namespace StayOnTheLine.Forms
                 _pnlManualModal.Visible = false;
             };
 
-            void PositionManualButton()
+            void PositionManualButtons()
             {
                 if (_pnlManualModal.Width <= 0 || _pnlManualModal.Height <= 0) return;
                 float scale = _pnlManualModal.Height / 1080f;
-                btnCloseManual.Font = FontManager.GetSmallCapsFont(Math.Max(9f, 11.5f * scale), FontStyle.Bold);
-                var textSize = TextRenderer.MeasureText(btnCloseManual.Text, btnCloseManual.Font);
-                int bW = Math.Max((int)(300 * scale), textSize.Width + (int)(40 * scale));
-                int bH = Math.Max((int)(46 * scale), textSize.Height + (int)(18 * scale));
+                var font = FontManager.GetSmallCapsFont(Math.Max(9f, 11f * scale), FontStyle.Bold);
+                btnTabProtocols.Font = font;
+                btnTabDossier.Font = font;
+                btnCloseManual.Font = font;
+
+                int bH = Math.Clamp((int)(44 * scale), 34, 48);
+                int bW = Math.Clamp((int)(240 * scale), 160, 290);
+                int gap = (int)(16 * scale);
+                int totalW = bW * 3 + gap * 2;
+                int startX = (_pnlManualModal.Width - totalW) / 2;
+                int bY = _pnlManualModal.Height - bH - (int)(18 * scale);
+
+                btnTabProtocols.Size = new Size(bW, bH);
+                btnTabProtocols.Location = new Point(startX, bY);
+
+                btnTabDossier.Size = new Size(bW, bH);
+                btnTabDossier.Location = new Point(startX + bW + gap, bY);
+
                 btnCloseManual.Size = new Size(bW, bH);
-                btnCloseManual.Location = new Point((_pnlManualModal.Width - bW) / 2, _pnlManualModal.Height - bH - (int)(18 * scale));
+                btnCloseManual.Location = new Point(startX + (bW + gap) * 2, bY);
             }
 
-            PositionManualButton();
-            _pnlManualModal.Resize += (s, e) => PositionManualButton();
+            PositionManualButtons();
+            _pnlManualModal.Resize += (s, e) => PositionManualButtons();
+            _pnlManualModal.Controls.Add(btnTabProtocols);
+            _pnlManualModal.Controls.Add(btnTabDossier);
             _pnlManualModal.Controls.Add(btnCloseManual);
 
             Controls.Add(_pnlManualModal);
@@ -3954,12 +4706,64 @@ namespace StayOnTheLine.Forms
                 e.Handled = true;
                 return;
             }
+            if ((e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) && _typewriterTimer.Enabled)
+            {
+                SkipTypewriter();
+                e.Handled = true;
+                return;
+            }
             if (e.KeyCode == Keys.Escape)
             {
+                if (_pnlPauseMenu != null && _pnlPauseMenu.Visible)
+                {
+                    HidePauseMenu();
+                    e.Handled = true;
+                    return;
+                }
                 if (_pnlManualModal != null && _pnlManualModal.Visible)
                 {
                     AudioManager.Instance.PlayPaperRustle();
                     _pnlManualModal.Visible = false;
+                    e.Handled = true;
+                    return;
+                }
+                if (_pnlDebriefModal != null && _pnlDebriefModal.Visible)
+                {
+                    e.Handled = true;
+                    return;
+                }
+                if (_currentView == ViewState.ComputerTerminal)
+                {
+                    SwitchView(ViewState.DeskRoom);
+                    e.Handled = true;
+                    return;
+                }
+                if (_currentView == ViewState.DeskRoom)
+                {
+                    ShowPauseMenu();
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            // CRT Terminal Hotkeys (1–4 Number Keys)
+            if (_currentView == ViewState.ComputerTerminal &&
+                (_pnlManualModal == null || !_pnlManualModal.Visible) &&
+                (_pnlDebriefModal == null || !_pnlDebriefModal.Visible) &&
+                !_charmDialogue.IsActive &&
+                (_callScene == null || !_callScene.Active))
+            {
+                int choiceIndex = -1;
+                if (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D4)
+                    choiceIndex = e.KeyCode - Keys.D1;
+                else if (e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad4)
+                    choiceIndex = e.KeyCode - Keys.NumPad1;
+
+                if (choiceIndex >= 0 && choiceIndex < _currentChoices.Count)
+                {
+                    if (_typewriterTimer.Enabled) SkipTypewriter();
+                    AudioManager.Instance.PlayKeyClick();
+                    _currentChoices[choiceIndex].OnClick?.Invoke();
                     e.Handled = true;
                     return;
                 }
@@ -3970,10 +4774,18 @@ namespace StayOnTheLine.Forms
         protected override void OnShiftStarted()
         {
             base.OnShiftStarted();
+            AudioManager.Instance.StopMenuAmbience();
+            AudioManager.Instance.StopPhoneRing();
+            AudioManager.Instance.StartGameplayAtmosphere();
             // Start in Desk Room View so the player sees their station, then clicks into computer
             SwitchView(ViewState.DeskRoom);
-            UpdatePhoneRing(); // the first line is already ringing while you sit at the desk
-            BeginShiftBriefing(); // optional opening scene, then the Shift Briefing book (CLOCK IN starts the shift)
+            BeginShiftBriefing(); // optional opening scene, then the Shift Briefing book (CLOCK IN starts the shift and rings line 1)
+        }
+
+        protected override void OnSettingsUpdated()
+        {
+            base.OnSettingsUpdated();
+            _typewriterTimer.Interval = Math.Max(1, SettingsManager.Instance.Current.GetDelayPerCharacterMs());
         }
     }
 

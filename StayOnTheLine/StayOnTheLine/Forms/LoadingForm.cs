@@ -84,7 +84,7 @@ namespace StayOnTheLine
             _scaler = new DesignScaler(this);
             CenterControls();
             loadingTimer.Start();
-            AudioManager.Instance.PlayAmbientLoop();
+            AudioManager.Instance.StartMenuAmbience();
         }
 
         private void LoadingForm_Resize(object? sender, EventArgs e)
@@ -217,6 +217,7 @@ namespace StayOnTheLine
 
             if (_onProceed != null)
             {
+                AudioManager.Instance.StopMenuAmbience();
                 _onProceed(this);
                 return;
             }

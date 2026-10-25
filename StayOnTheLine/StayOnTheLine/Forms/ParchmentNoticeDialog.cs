@@ -182,6 +182,7 @@ namespace StayOnTheLine.Forms
                 Opacity = 0.62
             };
             shade.Show(ownerForm);
+            shade.Update();
             try
             {
                 return dlg.ShowDialog(shade);

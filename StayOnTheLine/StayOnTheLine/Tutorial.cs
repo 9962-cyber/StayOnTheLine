@@ -24,6 +24,9 @@ namespace StayOnTheLine
     /// </summary>
     public partial class Tutorial : BaseGameForm
     {
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public Action? OnCompletedTransition { get; set; }
+
         private enum CharSide { Left, Center, Right }
 
         private class DialogueLine
@@ -672,8 +675,25 @@ namespace StayOnTheLine
             if (storyQueue.Count == 0)
             {
                 // Completed tutorial dialogue, transition cleanly to shift gameplay
+                var blackOverlay = new Panel
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = Color.Black
+                };
+                this.Controls.Add(blackOverlay);
+                blackOverlay.BringToFront();
+                blackOverlay.Update();
+
                 this.DialogResult = DialogResult.OK;
-                this.Close();
+
+                if (OnCompletedTransition != null)
+                {
+                    OnCompletedTransition();
+                }
+                else
+                {
+                    this.Close();
+                }
                 return;
             }
 
@@ -791,9 +811,21 @@ namespace StayOnTheLine
                 pnlDialogue.Width - pad * 2 - (int)(30 * s),
                 pnlDialogue.Height - textTop - (int)(20 * s));
 
-            lblArrow.Visible = false;
-            isTyping = true;
-            typingTimer.Start();
+            int delay = StayOnTheLine.Systems.SettingsManager.Instance.Current.GetDelayPerCharacterMs();
+            if (delay == 0)
+            {
+                lblDialogue.Text = currentFullText;
+                charIndex = currentFullText.Length;
+                lblArrow.Visible = true;
+                isTyping = false;
+            }
+            else
+            {
+                lblArrow.Visible = false;
+                isTyping = true;
+                typingTimer.Interval = Math.Max(1, delay);
+                typingTimer.Start();
+            }
         }
 
         private void TypingTimer_Tick(object? sender, EventArgs e)
@@ -802,6 +834,10 @@ namespace StayOnTheLine
             {
                 charIndex++;
                 lblDialogue.Text = currentFullText.Substring(0, charIndex);
+                if (charIndex % 2 == 0)
+                {
+                    StayOnTheLine.Systems.AudioManager.Instance.PlayTypewriterKeystroke();
+                }
             }
             else
             {
@@ -824,6 +860,7 @@ namespace StayOnTheLine
             if (isTyping)
             {
                 typingTimer.Stop();
+                charIndex = currentFullText.Length;
                 lblDialogue.Text = currentFullText;
                 isTyping = false;
                 lblArrow.Visible = true;
@@ -850,9 +887,7 @@ namespace StayOnTheLine
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            // Left the scene early: don't carry the phone ring back to the menu
-            if (DialogResult != DialogResult.OK)
-                StayOnTheLine.Systems.AudioManager.Instance.StopPhoneRing();
+            StayOnTheLine.Systems.AudioManager.Instance.StopPhoneRing();
             base.OnFormClosed(e);
         }
 

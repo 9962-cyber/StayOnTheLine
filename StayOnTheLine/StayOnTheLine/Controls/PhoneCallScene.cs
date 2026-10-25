@@ -38,8 +38,21 @@ namespace StayOnTheLine.Controls
         /// <summary>The call's last lines have been read and the scene closed itself.</summary>
         public event EventHandler? Ended;
 
+        private Image? _sceneBackground;
+
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public Image? SceneBackground { get; set; }
+        public Image? SceneBackground
+        {
+            get => _sceneBackground;
+            set
+            {
+                if (!ReferenceEquals(_sceneBackground, value))
+                {
+                    _sceneBackground = value;
+                    _backdropDirty = true;
+                }
+            }
+        }
 
         /// <summary>True from the first line until the scene closes.</summary>
         public bool Active { get; private set; }
@@ -56,8 +69,19 @@ namespace StayOnTheLine.Controls
             _typeTimer.Tick += (s, e) =>
             {
                 if (_current == null) { _typeTimer.Stop(); return; }
-                _typed = Math.Min(_current.Text.Length, _typed + 2);
-                if (_typed % 6 == 0) AudioManager.Instance.PlayTypewriterKeystroke();
+                if (SettingsManager.Instance.Current.GetDelayPerCharacterMs() == 0)
+                {
+                    _typed = _current.Text.Length;
+                    _typeTimer.Stop();
+                }
+                else
+                {
+                    _typed = Math.Min(_current.Text.Length, _typed + 1);
+                    if (_typed % 2 == 0)
+                    {
+                        AudioManager.Instance.PlayTypewriterKeystroke();
+                    }
+                }
                 if (_typed >= _current.Text.Length)
                 {
                     _typeTimer.Stop();
@@ -77,8 +101,26 @@ namespace StayOnTheLine.Controls
                 Active = true;
                 Visible = true;
                 BringToFront();
+                AudioManager.Instance.PlayPhonePickup();
             }
             if (_current == null || _typed >= _current.Text.Length) ShowNext();
+        }
+
+        public bool IsTyping => _current != null && _typed < _current.Text.Length;
+        public bool HasQueuedLines => _queue.Count > 0;
+        public event EventHandler? LineAdvanceRequested;
+
+        /// <summary>Completes typing immediately for the current line.</summary>
+        public void CompleteTyping()
+        {
+            if (_current == null) return;
+            if (_typed < _current.Text.Length)
+            {
+                _typed = _current.Text.Length;
+                _typeTimer.Stop();
+                if (_queue.Count == 0 && !_endAfterLines) ShowChoices();
+                Invalidate();
+            }
         }
 
         /// <summary>Choices shown once every queued line has been read.</summary>
@@ -95,7 +137,7 @@ namespace StayOnTheLine.Controls
             _endAfterLines = true;
             _pendingChoices = Array.Empty<(string, bool)>();
             ClearButtons();
-            if (_queue.Count == 0 && (_current == null || _typed >= _current.Text.Length)) Close();
+            if (_queue.Count == 0 && _current == null) Close();
         }
 
         /// <summary>Closes immediately (e.g. the player switched to another line).</summary>
@@ -104,13 +146,18 @@ namespace StayOnTheLine.Controls
             _queue.Clear();
             _current = null;
             _portrait = null;
+            _backdropDirty = true;
             _typeTimer.Stop();
             ClearButtons();
             bool wasActive = Active;
             Active = false;
             _endAfterLines = false;
             Visible = false;
-            if (wasActive) Ended?.Invoke(this, EventArgs.Empty);
+            if (wasActive)
+            {
+                AudioManager.Instance.PlayPhoneHangup();
+                Ended?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         /// <summary>Space / Enter / click: finish the typing line, or move to the next one.</summary>
@@ -121,12 +168,26 @@ namespace StayOnTheLine.Controls
             {
                 _typed = _current.Text.Length;
                 _typeTimer.Stop();
+                if (_queue.Count == 0 && !_endAfterLines) ShowChoices();
                 Invalidate();
-                if (_queue.Count == 0) AfterLastLine();
                 return;
             }
-            if (_queue.Count > 0) ShowNext();
-            else AfterLastLine();
+            if (_queue.Count > 0)
+            {
+                ShowNext();
+                return;
+            }
+            if (_endAfterLines)
+            {
+                Close();
+                return;
+            }
+            if (_pendingChoices.Count > 0)
+            {
+                ShowChoices();
+                return;
+            }
+            LineAdvanceRequested?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>Number keys pick the visible choices.</summary>
@@ -141,11 +202,21 @@ namespace StayOnTheLine.Controls
         {
             if (_queue.Count == 0) { AfterLastLine(); return; }
             _current = _queue.Dequeue();
-            if (_current.ClearPortrait) _portrait = null;
-            else if (_current.Portrait != null) _portrait = _current.Portrait;
-            if (_current.Background != null) SceneBackground = _current.Background;
-            _typed = 0;
-            _typeTimer.Start();
+            if (_current.ClearPortrait) { _portrait = null; _backdropDirty = true; }
+            else if (_current.Portrait != null && !ReferenceEquals(_portrait, _current.Portrait)) { _portrait = _current.Portrait; _backdropDirty = true; }
+            int delay = SettingsManager.Instance.Current.GetDelayPerCharacterMs();
+            if (delay == 0)
+            {
+                _typed = _current.Text.Length;
+                _typeTimer.Stop();
+                if (_queue.Count == 0 && !_endAfterLines) ShowChoices();
+            }
+            else
+            {
+                _typed = 0;
+                _typeTimer.Interval = Math.Max(1, delay);
+                _typeTimer.Start();
+            }
             Invalidate();
         }
 
@@ -186,13 +257,14 @@ namespace StayOnTheLine.Controls
 
         protected override void OnClick(EventArgs e)
         {
-            base.OnClick(e);
             if (_buttons.Count == 0) Advance();
+            base.OnClick(e);
         }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            _backdropDirty = true;
             LayoutButtons();
         }
 
@@ -225,14 +297,23 @@ namespace StayOnTheLine.Controls
             }
         }
 
-        protected override void OnPaint(PaintEventArgs e)
+        private Bitmap? _cachedBackdrop;
+        private bool _backdropDirty = true;
+
+        private void UpdateBackdrop(int W, int H)
         {
-            var g = e.Graphics;
+            if (_cachedBackdrop != null && (_cachedBackdrop.Width != W || _cachedBackdrop.Height != H))
+            {
+                _cachedBackdrop.Dispose();
+                _cachedBackdrop = null;
+            }
+
+            _cachedBackdrop ??= new Bitmap(W, H, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+
+            using var g = Graphics.FromImage(_cachedBackdrop);
+            g.Clear(Color.Black);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            int W = Width, H = Height;
-            if (W < 10 || H < 10) return;
-            float s = S;
 
             // 1. The caller's room, cover-fit, darkened at the edges
             if (SceneBackground != null)
@@ -259,6 +340,26 @@ namespace StayOnTheLine.Controls
                 int ph = (int)(H * 1.02f);
                 int pw = (int)(ph * (float)_portrait.Width / _portrait.Height);
                 g.DrawImage(_portrait, (int)(W * 0.80f) - pw / 2, H - ph + (int)(H * 0.04f), pw, ph);
+            }
+
+            _backdropDirty = false;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            int W = Width, H = Height;
+            if (W < 10 || H < 10) return;
+            float s = S;
+
+            if (_backdropDirty || _cachedBackdrop == null || _cachedBackdrop.Width != W || _cachedBackdrop.Height != H)
+            {
+                UpdateBackdrop(W, H);
+            }
+
+            if (_cachedBackdrop != null)
+            {
+                g.DrawImageUnscaled(_cachedBackdrop, 0, 0);
             }
 
             // 3. Dialogue box: near-black with the double white rule
@@ -301,7 +402,12 @@ namespace StayOnTheLine.Controls
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) _typeTimer.Dispose();
+            if (disposing)
+            {
+                _typeTimer.Dispose();
+                _cachedBackdrop?.Dispose();
+                _cachedBackdrop = null;
+            }
             base.Dispose(disposing);
         }
     }

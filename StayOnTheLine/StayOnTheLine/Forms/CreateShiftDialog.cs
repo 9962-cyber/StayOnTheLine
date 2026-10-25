@@ -15,20 +15,13 @@ namespace StayOnTheLine.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string OperatorName { get; private set; } = string.Empty;
 
-        protected override CreateParams CreateParams
-        {
-            get
-            {
-                CreateParams cp = base.CreateParams;
-                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED: smooth flicker-free compositing
-                return cp;
-            }
-        }
-
         public CreateShiftDialog(int slotIndex = 1)
         {
             InitializeComponent();
             SlotIndex = slotIndex;
+
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            DoubleBuffered = true;
 
             EnableDoubleBuffering(pnlParchmentContainer);
             EnableDoubleBuffering(pnlInputBox);

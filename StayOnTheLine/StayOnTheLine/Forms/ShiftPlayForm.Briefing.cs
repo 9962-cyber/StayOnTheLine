@@ -54,6 +54,13 @@ namespace StayOnTheLine.Forms
         /// <summary>Plays lines as a full-screen room scene; <paramref name="onFinished"/> runs once it closes.</summary>
         private void PlayRoomScene(IEnumerable<BriefingSceneLine> lines, Action? onFinished = null)
         {
+            var list = lines.ToList();
+            if (list.Count == 0)
+            {
+                onFinished?.Invoke();
+                return;
+            }
+
             _charmDialogue.Clear();
             _charmDialogue.Docked = false;
             LayoutCharmDialogue();
@@ -68,7 +75,7 @@ namespace StayOnTheLine.Forms
                 _charmDialogue.Finished += Handler;
             }
 
-            foreach (var line in lines)
+            foreach (var line in list)
             {
                 string text = line.Text.Replace("{operator}", Profile.OperatorName);
                 _charmDialogue.Enqueue(line.Speaker, text, line.Sprite != null ? SceneSprite(line.Sprite) : null, line.Tag);
@@ -109,6 +116,9 @@ namespace StayOnTheLine.Forms
         private void ClockIn()
         {
             if (_pnlShiftBook == null) return;
+            // Definitive audio transition: kill any lingering menu audio and start gameplay atmosphere
+            AudioManager.Instance.StopMenuAmbience();
+            AudioManager.Instance.StartGameplayAtmosphere();
             AudioManager.Instance.PlayInkStamp();
             Controls.Remove(_pnlShiftBook);
             _pnlShiftBook.Dispose();

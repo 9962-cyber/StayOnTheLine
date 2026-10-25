@@ -15,6 +15,8 @@ namespace StayOnTheLine
 
         Label[] menu;
         int selected = -1;
+        private readonly Label lblContinueSub = new Label();
+        private readonly System.Windows.Forms.Timer tmrRejectFlash = new System.Windows.Forms.Timer();
 
         protected override CreateParams CreateParams
         {
@@ -31,7 +33,16 @@ namespace StayOnTheLine
             InitializeComponent();
             DoubleBuffered = true;
             menu = new[] { lblNewShift, lblContinue, lblSettings, lblQuit };
+
+            lblContinueSub.AutoSize = true;
+            lblContinueSub.BackColor = Color.Transparent;
+            lblContinueSub.Click += (s, e) => { if (SaveManager.Instance.HasAnySaves()) Activate(1); else ContinueShiftFlow(); };
+            lblContinueSub.MouseEnter += (s, e) => { if (SaveManager.Instance.HasAnySaves()) Select(1); };
+            lblContinueSub.MouseLeave += (s, e) => Select(-1);
+            pbBackground.Controls.Add(lblContinueSub);
+
             Resize += (s, e) => AdjustLayout();
+            VisibleChanged += (s, e) => { if (Visible) RefreshContinueState(); };
         }
 
         void MainMenu_Load(object sender, EventArgs e)
@@ -49,8 +60,9 @@ namespace StayOnTheLine
             catch { }
 
             lblPlaceholder.Visible = pbBackground.Image == null;
+            RefreshContinueState();
             AdjustLayout();
-            AudioManager.Instance.PlayAmbientLoop();
+            AudioManager.Instance.StartMenuAmbience();
             pbBackground.Paint += (s, ev) => DrawVignetteOverlay(ev.Graphics, pbBackground.ClientRectangle);
         }
 
@@ -77,6 +89,35 @@ namespace StayOnTheLine
             }
         }
 
+        public void RefreshContinueState()
+        {
+            bool hasSaves = SaveManager.Instance.HasAnySaves();
+            if (hasSaves)
+            {
+                int? slot = SaveManager.Instance.GetMostRecentSlot();
+                var profile = slot.HasValue ? SaveManager.Instance.GetProfile(slot.Value) : null;
+                if (profile != null)
+                {
+                    lblContinue.Text = "CONTINUE";
+                    lblContinue.ForeColor = (selected == 1) ? HoverColor : NormalColor;
+                    lblContinue.Cursor = Cursors.Hand;
+
+                    string timeStr = profile.LastPlayedTimestamp.ToString("hh:mm tt");
+                    lblContinueSub.Text = $"▸ SHIFT {profile.CurrentShift:D2} — OP. {profile.OperatorName.ToUpperInvariant()} [{timeStr}]";
+                    lblContinueSub.ForeColor = (selected == 1) ? Color.White : Color.FromArgb(140, 215, 160);
+                    lblContinueSub.Cursor = Cursors.Hand;
+                    return;
+                }
+            }
+
+            lblContinue.Text = "CONTINUE";
+            lblContinue.ForeColor = DimColor;
+            lblContinue.Cursor = Cursors.Default;
+            lblContinueSub.Text = "[ NO ARCHIVE FOUND ]";
+            lblContinueSub.ForeColor = Color.FromArgb(100, 98, 92);
+            lblContinueSub.Cursor = Cursors.Default;
+        }
+
         // ---- Mouse ------------------------------------------------------
         void MenuItem_MouseEnter(object sender, EventArgs e) => Select(Array.IndexOf(menu, (Label)sender));
         void MenuItem_MouseLeave(object sender, EventArgs e) => Select(-1);
@@ -85,13 +126,23 @@ namespace StayOnTheLine
         // ---- Keyboard ---------------------------------------------------
         void MainMenu_KeyDown(object sender, KeyEventArgs e)
         {
+            bool hasSaves = SaveManager.Instance.HasAnySaves();
             switch (e.KeyCode)
             {
-                case Keys.Down: Select((selected + 1) % menu.Length); break;
-                case Keys.Up: Select((selected <= 0 ? menu.Length : selected) - 1); break;
+                case Keys.Down:
+                    int next = (selected + 1) % menu.Length;
+                    if (next == 1 && !hasSaves) next = (next + 1) % menu.Length;
+                    Select(next);
+                    break;
+                case Keys.Up:
+                    int prev = (selected <= 0 ? menu.Length : selected) - 1;
+                    if (prev == 1 && !hasSaves) prev = (prev <= 0 ? menu.Length : prev) - 1;
+                    Select(prev);
+                    break;
                 case Keys.Enter: if (selected >= 0) Activate(selected); break;
                 case Keys.Escape: Application.Exit(); break;
                 case Keys.F1: OpenTutorialFlow(); break; // Open tutorial with F1
+                case Keys.F2: OpenArchiveFlow(); break; // Open multi-slot archive ledger with F2
                 case Keys.F3: OpenStefSceneFlow(); break; // Open the Shift 3 Stef scene with F3
             }
         }
@@ -99,18 +150,37 @@ namespace StayOnTheLine
         // ---- Logic ------------------------------------------------------
         void Select(int index)
         {
+            bool hasSaves = SaveManager.Instance.HasAnySaves();
             if (index >= 0 && index != selected)
             {
-                AudioManager.Instance.PlayFrequencyBlip();
+                if (index != 1 || hasSaves)
+                {
+                    AudioManager.Instance.PlayFrequencyBlip();
+                }
             }
             selected = index;
             for (int i = 0; i < menu.Length; i++)
-                menu[i].ForeColor = i == selected ? HoverColor
-                                  : i == menu.Length - 1 ? DimColor : NormalColor;
+            {
+                if (i == 1 && !hasSaves)
+                {
+                    menu[i].ForeColor = DimColor;
+                }
+                else
+                {
+                    menu[i].ForeColor = i == selected ? HoverColor
+                                      : i == menu.Length - 1 ? DimColor : NormalColor;
+                }
+            }
+
+            if (hasSaves)
+            {
+                lblContinueSub.ForeColor = (selected == 1) ? Color.White : Color.FromArgb(140, 215, 160);
+            }
         }
 
         void Activate(int index)
         {
+            AudioManager.Instance.PlayClick();
             switch (index)
             {
                 case 0: // New Shift
@@ -140,7 +210,9 @@ namespace StayOnTheLine
         // Opens the tutorial form with the verified operator's profile and smooth transition
         private void OpenTutorialFlow(Models.OperatorProfile? profile = null, Controls.OperatorVerificationOverlay? overlay = null, Action? onShown = null)
         {
+            AudioManager.Instance.StopMenuAmbience();
             var tutorial = profile != null ? new Tutorial(profile) : new Tutorial("OPERATOR");
+            bool continuingToShift = false;
 
             // Hook Shown so MainForm hides ONLY after Tutorial has completely painted its first frame
             tutorial.Shown += (s, e) =>
@@ -161,9 +233,10 @@ namespace StayOnTheLine
                 }
             };
 
-            tutorial.FormClosed += (s, e) =>
+            tutorial.OnCompletedTransition = () =>
             {
-                if (tutorial.DialogResult == DialogResult.OK && profile != null)
+                continuingToShift = true;
+                if (profile != null)
                 {
                     if (profile.CurrentShift == 1)
                     {
@@ -175,16 +248,30 @@ namespace StayOnTheLine
                             profile.AnomalyFlags.Add("Shift2IntroSeen");
                     }
                     SaveManager.Instance.SaveProfile(profile);
+                }
 
-                    // Seamless transition straight from tutorial dialogue into Shift 1 / Shift 2
-                    OpenShiftFlow(profile);
-                }
-                else
+                // Seamless handoff: Open next shift, and only close/dispose tutorial when ShiftPlayForm.Shown fires!
+                OpenShiftFlow(profile ?? new Models.OperatorProfile { OperatorName = "OPERATOR" }, onShown: () =>
                 {
-                    this.Show();
-                    this.BringToFront();
-                    this.Activate();
-                }
+                    tutorial.Hide();
+                    tutorial.Close();
+                    tutorial.Dispose();
+                });
+            };
+
+            tutorial.FormClosing += (s, e) =>
+            {
+                if (continuingToShift) return;
+
+                this.Show();
+                this.BringToFront();
+                this.Activate();
+                this.Update();
+                AudioManager.Instance.StartMenuAmbience();
+            };
+
+            tutorial.FormClosed += (s, e) =>
+            {
                 tutorial.Dispose();
             };
 
@@ -199,16 +286,22 @@ namespace StayOnTheLine
         // Flags are applied to the profile in memory only; the shift flow is responsible for saving.
         private void OpenStefSceneFlow()
         {
+            AudioManager.Instance.StopMenuAmbience();
             int? slot = SaveManager.Instance.GetMostRecentSlot();
             var profile = slot.HasValue ? SaveManager.Instance.GetProfile(slot.Value) : null;
             var scene = new Forms.StefSceneForm(profile);
 
             scene.Shown += (s, e) => this.Hide();
-            scene.FormClosed += (s, e) =>
+            scene.FormClosing += (s, e) =>
             {
                 this.Show();
                 this.BringToFront();
                 this.Activate();
+                this.Update();
+                AudioManager.Instance.StartMenuAmbience();
+            };
+            scene.FormClosed += (s, e) =>
+            {
                 scene.Dispose();
             };
             scene.Show();
@@ -216,6 +309,7 @@ namespace StayOnTheLine
 
         private void OpenShiftFlow(Models.OperatorProfile profile, Controls.OperatorVerificationOverlay? overlay = null, Action? onShown = null)
         {
+            AudioManager.Instance.StopMenuAmbience();
             var scenario = Systems.ShiftScenarioFactory.Create(profile.CurrentShift);
             var shiftForm = new Forms.ShiftPlayForm(profile, scenario);
             bool continuingToNextShift = false;
@@ -238,25 +332,28 @@ namespace StayOnTheLine
                 }
             };
 
-            // Clocked out with a next shift to play: put its loading screen up *before* this window
-            // closes, so the game never drops to the desktop or back to the menu in between
-            shiftForm.FormClosing += (s, e) =>
+            shiftForm.OnShiftTransitionRequested = (nextProfile) =>
             {
-                if (shiftForm.DialogResult == DialogResult.OK && Systems.ShiftScenarioFactory.HasScenario(profile.CurrentShift))
-                {
-                    continuingToNextShift = true;
-                    ShowShiftTransition(profile);
-                }
+                continuingToNextShift = true;
+                ShowShiftTransition(nextProfile, previousScreen: shiftForm);
             };
 
-            shiftForm.FormClosed += (s, e) =>
+            // In case of closing back to Main Menu (e.g. Save & Quit), show MainForm *before* shiftForm
+            // finishes closing, ensuring zero gap where the desktop is revealed.
+            shiftForm.FormClosing += (s, e) =>
             {
-                shiftForm.Dispose();
                 if (continuingToNextShift) return;
 
                 this.Show();
                 this.BringToFront();
                 this.Activate();
+                this.Update();
+                AudioManager.Instance.StartMenuAmbience();
+            };
+
+            shiftForm.FormClosed += (s, e) =>
+            {
+                shiftForm.Dispose();
             };
 
             shiftForm.Show();
@@ -269,8 +366,9 @@ namespace StayOnTheLine
         /// <summary>
         /// Loading screen titled with the next shift (e.g. "SHIFT 2"), then that
         /// shift's intro scene if it hasn't been seen, otherwise the shift itself.
+        /// Keeps the previous screen visible until LoadingForm has finished painting.
         /// </summary>
-        private void ShowShiftTransition(Models.OperatorProfile profile)
+        private void ShowShiftTransition(Models.OperatorProfile profile, Form? previousScreen = null)
         {
             var loading = new LoadingForm(
                 $"SHIFT {profile.CurrentShift}",
@@ -278,15 +376,34 @@ namespace StayOnTheLine
                 screen =>
                 {
                     bool needsIntro = profile.CurrentShift == 2 && !profile.AnomalyFlags.Contains("Shift2IntroSeen");
+                    Action closeLoading = () =>
+                    {
+                        screen.Hide();
+                        screen.Close();
+                        screen.Dispose();
+                    };
+
                     if (needsIntro)
-                        OpenTutorialFlow(profile, onShown: screen.Close);
+                        OpenTutorialFlow(profile, onShown: closeLoading);
                     else
-                        OpenShiftFlow(profile, onShown: screen.Close);
+                        OpenShiftFlow(profile, onShown: closeLoading);
                 });
+
+            loading.Shown += (s, e) =>
+            {
+                if (previousScreen != null && !previousScreen.IsDisposed)
+                {
+                    previousScreen.Hide();
+                    previousScreen.Close();
+                    previousScreen.Dispose();
+                }
+            };
 
             loading.Show();
             loading.BringToFront();
             loading.Activate();
+            loading.Focus();
+            loading.Update();
         }
 
         private void StartNewShiftFlow()
@@ -296,26 +413,48 @@ namespace StayOnTheLine
             {
                 LaunchGameWithProfile(archiveForm.SelectedProfile);
             }
+            RefreshContinueState();
         }
 
         private void ContinueShiftFlow()
         {
             if (!SaveManager.Instance.HasAnySaves())
             {
-                MessageBox.Show(
-                    this,
-                    "NO ARCHIVED OPERATORS FOUND.\n\nPlease select 'NEW SHIFT' to begin your first night shift assignment.",
-                    "Recovered Operator Archive",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                AudioManager.Instance.PlayFrequencyBlip();
+                lblContinueSub.Text = "⚠ NO ACTIVE ARCHIVE DETECTED // SELECT 'NEW SHIFT'";
+                lblContinueSub.ForeColor = Color.FromArgb(255, 140, 100);
+
+                tmrRejectFlash.Stop();
+                tmrRejectFlash.Interval = 2000;
+                tmrRejectFlash.Tick += (s, e) =>
+                {
+                    tmrRejectFlash.Stop();
+                    RefreshContinueState();
+                };
+                tmrRejectFlash.Start();
                 return;
             }
 
+            int? slot = SaveManager.Instance.GetMostRecentSlot();
+            var profile = slot.HasValue ? SaveManager.Instance.GetProfile(slot.Value) : null;
+            if (profile != null)
+            {
+                LaunchGameWithProfile(profile);
+            }
+            else
+            {
+                OpenArchiveFlow();
+            }
+        }
+
+        private void OpenArchiveFlow()
+        {
             using var archiveForm = new Forms.OperatorArchiveForm(SaveManager.Instance, isNewShiftMode: false);
             if (archiveForm.ShowDialog(this) == DialogResult.OK && archiveForm.SelectedProfile != null)
             {
                 LaunchGameWithProfile(archiveForm.SelectedProfile);
             }
+            RefreshContinueState();
         }
 
         private void LaunchGameWithProfile(Models.OperatorProfile profile)
@@ -427,9 +566,13 @@ namespace StayOnTheLine
             lblContinue.Font = menuFont;
             lblContinue.Location = new Point(blockX, lblNewShift.Bottom + menuSpacing);
 
-            lblQuit.Font = menuFont;
+            float subFontSize = Math.Max(9.5f, 13f * fontScale);
+            lblContinueSub.Font = new Font("IM FELL DW Pica SC", subFontSize, FontStyle.Italic);
+            int subMarginY = (int)(2 * scaleY);
+            lblContinueSub.Location = new Point(blockX + (int)(4 * scaleX), lblContinue.Bottom + subMarginY);
+
             lblSettings.Font = menuFont;
-            lblSettings.Location = new Point(blockX, lblContinue.Bottom + menuSpacing);
+            lblSettings.Location = new Point(blockX, lblContinueSub.Bottom + menuSpacing);
 
             lblQuit.Font = menuFont;
             lblQuit.Location = new Point(blockX, lblSettings.Bottom + menuSpacing);

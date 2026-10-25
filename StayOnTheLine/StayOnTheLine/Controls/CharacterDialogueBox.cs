@@ -22,9 +22,22 @@ namespace StayOnTheLine.Controls
 
         public event EventHandler? Finished;
 
+        private Image? _sceneBackground;
+
         /// <summary>Room art drawn behind the character (cover-fit).</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public Image? SceneBackground { get; set; }
+        public Image? SceneBackground
+        {
+            get => _sceneBackground;
+            set
+            {
+                if (!ReferenceEquals(_sceneBackground, value))
+                {
+                    _sceneBackground = value;
+                    _backdropDirty = true;
+                }
+            }
+        }
 
         public bool IsActive => _current != null;
 
@@ -49,8 +62,19 @@ namespace StayOnTheLine.Controls
             _typeTimer.Tick += (s, e) =>
             {
                 if (_current == null) { _typeTimer.Stop(); return; }
-                _typedChars = Math.Min(_current.Text.Length, _typedChars + 2);
-                if (_typedChars % 6 == 0) AudioManager.Instance.PlayTypewriterKeystroke();
+                if (SettingsManager.Instance.Current.GetDelayPerCharacterMs() == 0)
+                {
+                    _typedChars = _current.Text.Length;
+                    _typeTimer.Stop();
+                }
+                else
+                {
+                    _typedChars = Math.Min(_current.Text.Length, _typedChars + 1);
+                    if (_typedChars % 2 == 0)
+                    {
+                        AudioManager.Instance.PlayTypewriterKeystroke();
+                    }
+                }
                 if (_typedChars >= _current.Text.Length) _typeTimer.Stop();
                 Invalidate();
             };
@@ -62,6 +86,21 @@ namespace StayOnTheLine.Controls
         {
             _queue.Enqueue(new DialogueLine(speaker, text, portrait, tag));
             if (_current == null) ShowNext();
+        }
+
+        public bool IsTyping => _current != null && _typedChars < _current.Text.Length;
+        public bool HasQueuedLines => _queue.Count > 0;
+
+        /// <summary>Completes the typing line immediately.</summary>
+        public void CompleteTyping()
+        {
+            if (_current == null) return;
+            if (_typedChars < _current.Text.Length)
+            {
+                _typedChars = _current.Text.Length;
+                _typeTimer.Stop();
+                Invalidate();
+            }
         }
 
         /// <summary>Completes the typing line, or moves on to the next queued line.</summary>
@@ -84,6 +123,7 @@ namespace StayOnTheLine.Controls
             _queue.Clear();
             _current = null;
             _standingSprite = null;
+            _backdropDirty = true;
             _typeTimer.Stop();
             Visible = false;
         }
@@ -101,11 +141,27 @@ namespace StayOnTheLine.Controls
             }
 
             _current = _queue.Dequeue();
-            if (_current.Portrait != null) _standingSprite = _current.Portrait;
-            _typedChars = 0;
+            if (_current.Portrait != null && !ReferenceEquals(_standingSprite, _current.Portrait))
+            {
+                _standingSprite = _current.Portrait;
+                _backdropDirty = true;
+            }
+
+            int delay = SettingsManager.Instance.Current.GetDelayPerCharacterMs();
+            if (delay == 0)
+            {
+                _typedChars = _current.Text.Length;
+                _typeTimer.Stop();
+            }
+            else
+            {
+                _typedChars = 0;
+                _typeTimer.Interval = Math.Max(1, delay);
+                _typeTimer.Start();
+            }
+
             Visible = true;
             BringToFront();
-            _typeTimer.Start();
             Invalidate();
         }
 
@@ -115,9 +171,20 @@ namespace StayOnTheLine.Controls
             Advance();
         }
 
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            _backdropDirty = true;
+        }
+
         protected override void Dispose(bool disposing)
         {
-            if (disposing) _typeTimer.Dispose();
+            if (disposing)
+            {
+                _typeTimer.Dispose();
+                _cachedBackdrop?.Dispose();
+                _cachedBackdrop = null;
+            }
             base.Dispose(disposing);
         }
 
@@ -184,21 +251,24 @@ namespace StayOnTheLine.Controls
             }
         }
 
-        protected override void OnPaint(PaintEventArgs e)
+        private Bitmap? _cachedBackdrop;
+        private bool _backdropDirty = true;
+
+        private void UpdateBackdrop(int W, int H)
         {
-            var g = e.Graphics;
+            if (_cachedBackdrop != null && (_cachedBackdrop.Width != W || _cachedBackdrop.Height != H))
+            {
+                _cachedBackdrop.Dispose();
+                _cachedBackdrop = null;
+            }
+
+            _cachedBackdrop ??= new Bitmap(W, H, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+
+            using var g = Graphics.FromImage(_cachedBackdrop);
+            g.Clear(Color.Black);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-
-            int W = ClientSize.Width, H = ClientSize.Height;
-            if (W <= 2 || H <= 2 || _current == null) return;
-            if (Docked)
-            {
-                PaintDocked(g, W, H);
-                return;
-            }
-            float s = H / 1080f;
 
             // 1. The dispatch room, cover-fit, with the story scenes' soft edge vignette
             if (SceneBackground != null)
@@ -230,6 +300,34 @@ namespace StayOnTheLine.Controls
                 if (aspect > (float)box.Width / box.Height) { dh = (int)(box.Width / aspect); dy = box.Bottom - dh; }
                 else { dw = (int)(box.Height * aspect); dx = box.X + (box.Width - dw) / 2; }
                 g.DrawImage(_standingSprite, dx, dy, dw, dh);
+            }
+
+            _backdropDirty = false;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            int W = ClientSize.Width, H = ClientSize.Height;
+            if (W <= 2 || H <= 2 || _current == null) return;
+            if (Docked)
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                PaintDocked(g, W, H);
+                return;
+            }
+            float s = H / 1080f;
+
+            if (_backdropDirty || _cachedBackdrop == null || _cachedBackdrop.Width != W || _cachedBackdrop.Height != H)
+            {
+                UpdateBackdrop(W, H);
+            }
+
+            if (_cachedBackdrop != null)
+            {
+                g.DrawImageUnscaled(_cachedBackdrop, 0, 0);
             }
 
             // 3. Dialogue box: near-black with the double white rule

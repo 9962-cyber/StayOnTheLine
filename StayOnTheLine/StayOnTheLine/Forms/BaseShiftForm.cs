@@ -39,7 +39,7 @@ namespace StayOnTheLine.Forms
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            AudioManager.Instance.PlayAmbientLoop();
+            AudioManager.Instance.StopMenuAmbience();
             OnShiftStarted();
         }
 
@@ -67,7 +67,13 @@ namespace StayOnTheLine.Forms
                 DialogResult = DialogResult.Cancel;
                 Close();
             }
+            else
+            {
+                OnSettingsUpdated();
+            }
         }
+
+        protected virtual void OnSettingsUpdated() { }
 
         // Virtual & Abstract Lifecycle Hooks (Polymorphism)
         protected virtual void OnShiftStarted() { }
