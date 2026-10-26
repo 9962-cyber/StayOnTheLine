@@ -60,7 +60,7 @@ namespace StayOnTheLine.Controls
         public PhoneCallScene()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
-                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.StandardDoubleClick, true);
             SetStyle(ControlStyles.Selectable, false);
             BackColor = Color.Black;
             Cursor = Cursors.Hand;
@@ -121,6 +121,29 @@ namespace StayOnTheLine.Controls
                 if (_queue.Count == 0 && !_endAfterLines) ShowChoices();
                 Invalidate();
             }
+        }
+
+        /// <summary>Immediately completes all lines and displays pending choices or closes the call scene.</summary>
+        public void CompleteAll()
+        {
+            _queue.Clear();
+            _typeTimer.Stop();
+            if (_current != null)
+            {
+                _typed = _current.Text.Length;
+            }
+            if (_endAfterLines)
+            {
+                Close();
+                return;
+            }
+            if (_pendingChoices.Count > 0)
+            {
+                ShowChoices();
+                Invalidate();
+                return;
+            }
+            Close();
         }
 
         /// <summary>Choices shown once every queued line has been read.</summary>
@@ -255,10 +278,33 @@ namespace StayOnTheLine.Controls
             _buttons.Clear();
         }
 
+        private long _lastClickTicks;
+
         protected override void OnClick(EventArgs e)
         {
-            if (_buttons.Count == 0) Advance();
+            if (_buttons.Count == 0)
+            {
+                long now = Environment.TickCount64;
+                if (now - _lastClickTicks <= SystemInformation.DoubleClickTime)
+                {
+                    CompleteAll();
+                }
+                else
+                {
+                    Advance();
+                }
+                _lastClickTicks = now;
+            }
             base.OnClick(e);
+        }
+
+        protected override void OnDoubleClick(EventArgs e)
+        {
+            if (_buttons.Count == 0)
+            {
+                CompleteAll();
+            }
+            base.OnDoubleClick(e);
         }
 
         protected override void OnResize(EventArgs e)

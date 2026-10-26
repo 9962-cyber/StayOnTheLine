@@ -84,6 +84,8 @@ namespace StayOnTheLine.Forms
         private readonly List<Label> _pauseButtons = new();
         private Label? _lblAutosaveBadge;
         private readonly System.Windows.Forms.Timer _autosaveFadeTimer = new() { Interval = 2400 };
+        private long _lastEnterPressTicks;
+        private long _lastTranscriptClickTicks;
 
         // UI Controls for Computer Terminal View
         private Panel _pnlCrtScreen = null!;
@@ -172,6 +174,7 @@ namespace StayOnTheLine.Forms
 
         public ShiftPlayForm(OperatorProfile profile, IShiftScenario scenario) : base(profile, scenario)
         {
+            KeyPreview = true;
             _calls = Scenario.GenerateCalls();
             LoadAssets();
             _charmDialogue = new Controls.CharacterDialogueBox();
@@ -654,9 +657,27 @@ namespace StayOnTheLine.Forms
             _pnlCallBox.MouseWheel += OnTranscriptMouseWheel;
             _pnlTranscriptScroll.MouseWheel += OnTranscriptMouseWheel;
             _lblCallTranscript.MouseWheel += OnTranscriptMouseWheel;
-            _pnlCallBox.Click += (s, e) => SkipTypewriter();
-            _pnlTranscriptScroll.Click += (s, e) => SkipTypewriter();
-            _lblCallTranscript.Click += (s, e) => SkipTypewriter();
+            void HandleTranscriptClick()
+            {
+                long now = Environment.TickCount64;
+                if (now - _lastTranscriptClickTicks <= SystemInformation.DoubleClickTime)
+                {
+                    SkipAllDialogue();
+                }
+                else
+                {
+                    if (_typewriterTimer.Enabled) SkipTypewriter();
+                    else AdvanceDialogue();
+                }
+                _lastTranscriptClickTicks = now;
+            }
+
+            _pnlCallBox.Click += (s, e) => HandleTranscriptClick();
+            _pnlTranscriptScroll.Click += (s, e) => HandleTranscriptClick();
+            _lblCallTranscript.Click += (s, e) => HandleTranscriptClick();
+            _pnlCallBox.DoubleClick += (s, e) => SkipAllDialogue();
+            _pnlTranscriptScroll.DoubleClick += (s, e) => SkipAllDialogue();
+            _lblCallTranscript.DoubleClick += (s, e) => SkipAllDialogue();
 
             // Telemetry Row (Location / Signal / Trust / Panic)
             _pnlTelemetry = new Panel
@@ -2834,6 +2855,82 @@ namespace StayOnTheLine.Forms
             PlayNextSegment();
         }
 
+        public void AdvanceDialogue()
+        {
+            if (_callScene is { Active: true })
+            {
+                _callScene.Advance();
+                return;
+            }
+            if (_charmDialogue.IsActive)
+            {
+                _charmDialogue.Advance();
+                return;
+            }
+            if (_typewriterTimer.Enabled)
+            {
+                SkipTypewriter();
+                return;
+            }
+        }
+
+        public void SkipAllDialogue()
+        {
+            // 1. Finish active typewriter CRT segment immediately
+            if (_typewriterTimer.Enabled)
+            {
+                _displayedDialogue = _targetDialogue;
+                _typewriterCharIndex = _targetDialogue.Length;
+                _lblCallTranscript.Text = _displayedDialogue;
+                _typewriterTimer.Stop();
+            }
+
+            // 2. Flush all remaining script segments
+            while (_scriptSegments.Count > 0)
+            {
+                var seg = _scriptSegments.Dequeue();
+                if (seg.CrtText != null)
+                {
+                    if (seg.CrtText.Contains("SYSTEM: CALLER DISCONNECTED", StringComparison.Ordinal))
+                        SetCallSignal("DISCONNECTED");
+                    else if (seg.CrtText.Contains("SYSTEM: SIGNAL UNSTABLE", StringComparison.Ordinal))
+                        SetCallSignal("UNSTABLE");
+
+                    if (_freshTranscriptPending)
+                    {
+                        _freshTranscriptPending = false;
+                        _targetDialogue = seg.CrtText;
+                    }
+                    else
+                    {
+                        _targetDialogue += "\n\n" + seg.CrtText;
+                    }
+                    _displayedDialogue = _targetDialogue;
+                    _typewriterCharIndex = _targetDialogue.Length;
+                }
+            }
+
+            _freshTranscriptPending = false;
+            _lblCallTranscript.Text = _displayedDialogue;
+
+            int visibleH = _pnlTranscriptScroll.ClientSize.Height;
+            int totalH = _lblCallTranscript.Height + 16;
+            _transcriptScrollY = Math.Max(0, totalH - visibleH);
+            _lblCallTranscript.Location = new Point(14, 8 - _transcriptScrollY);
+
+            // 3. Complete Charm dialogue if active (e.g. Briefing room scene or docked)
+            if (_charmDialogue.IsActive)
+            {
+                _charmDialogue.CompleteAll();
+            }
+
+            // 4. Complete Call Scene if active
+            if (_callScene is { Active: true })
+            {
+                _callScene.CompleteAll();
+            }
+        }
+
         private void SkipTypewriter()
         {
             if (_typewriterTimer.Enabled)
@@ -4693,25 +4790,93 @@ namespace StayOnTheLine.Forms
             _pnlManualModal.BringToFront();
         }
 
-        protected override void OnKeyDown(KeyEventArgs e)
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            Keys keyCode = keyData & Keys.KeyCode;
+
+            if (keyCode == Keys.Escape)
+            {
+                if (_pnlPauseMenu != null && _pnlPauseMenu.Visible)
+                {
+                    HidePauseMenu();
+                    return true;
+                }
+                if (_pnlManualModal != null && _pnlManualModal.Visible)
+                {
+                    AudioManager.Instance.PlayPaperRustle();
+                    _pnlManualModal.Visible = false;
+                    return true;
+                }
+                if (_pnlDebriefModal != null && _pnlDebriefModal.Visible)
+                {
+                    return true;
+                }
+
+                ShowPauseMenu();
+                return true;
+            }
+
+            if (keyCode is Keys.Space or Keys.Enter)
+            {
+                bool isDialogueActive = (_callScene is { Active: true }) ||
+                                        _charmDialogue.IsActive ||
+                                        _typewriterTimer.Enabled ||
+                                        (_scriptSegments.Count > 0);
+
+                if (isDialogueActive)
+                {
+                    long now = Environment.TickCount64;
+                    bool isDoubleEnter = (now - _lastEnterPressTicks <= 500);
+                    _lastEnterPressTicks = now;
+
+                    if (isDoubleEnter)
+                    {
+                        SkipAllDialogue();
+                    }
+                    else
+                    {
+                        AdvanceDialogue();
+                    }
+                    return true;
+                }
+            }
+
+            // CRT Terminal Hotkeys (1–4 Number Keys)
+            if (_currentView == ViewState.ComputerTerminal &&
+                (_pnlPauseMenu == null || !_pnlPauseMenu.Visible) &&
+                (_pnlManualModal == null || !_pnlManualModal.Visible) &&
+                (_pnlDebriefModal == null || !_pnlDebriefModal.Visible) &&
+                !_charmDialogue.IsActive &&
+                (_callScene == null || !_callScene.Active))
+            {
+                int choiceIndex = -1;
+                if (keyCode >= Keys.D1 && keyCode <= Keys.D4)
+                    choiceIndex = keyCode - Keys.D1;
+                else if (keyCode >= Keys.NumPad1 && keyCode <= Keys.NumPad4)
+                    choiceIndex = keyCode - Keys.NumPad1;
+
+                if (choiceIndex >= 0 && choiceIndex < _currentChoices.Count)
+                {
+                    if (_typewriterTimer.Enabled) SkipTypewriter();
+                    AudioManager.Instance.PlayKeyClick();
+                    _currentChoices[choiceIndex].OnClick?.Invoke();
+                    return true;
+                }
+            }
+
             if (_callScene is { Active: true })
             {
-                if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { _callScene.Advance(); e.Handled = true; return; }
-                if (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6 && _callScene.TrySelect(e.KeyCode - Keys.D1)) { e.Handled = true; return; }
+                if (keyCode >= Keys.D1 && keyCode <= Keys.D6 && _callScene.TrySelect(keyCode - Keys.D1))
+                {
+                    return true;
+                }
             }
-            if ((e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) && _charmDialogue.IsActive)
-            {
-                _charmDialogue.Advance();
-                e.Handled = true;
-                return;
-            }
-            if ((e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) && _typewriterTimer.Enabled)
-            {
-                SkipTypewriter();
-                e.Handled = true;
-                return;
-            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
             if (e.KeyCode == Keys.Escape)
             {
                 if (_pnlPauseMenu != null && _pnlPauseMenu.Visible)
@@ -4732,15 +4897,27 @@ namespace StayOnTheLine.Forms
                     e.Handled = true;
                     return;
                 }
-                if (_currentView == ViewState.ComputerTerminal)
+                ShowPauseMenu();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.KeyCode is Keys.Space or Keys.Enter)
+            {
+                bool isDialogueActive = (_callScene is { Active: true }) ||
+                                        _charmDialogue.IsActive ||
+                                        _typewriterTimer.Enabled ||
+                                        (_scriptSegments.Count > 0);
+
+                if (isDialogueActive)
                 {
-                    SwitchView(ViewState.DeskRoom);
-                    e.Handled = true;
-                    return;
-                }
-                if (_currentView == ViewState.DeskRoom)
-                {
-                    ShowPauseMenu();
+                    long now = Environment.TickCount64;
+                    bool isDoubleEnter = (now - _lastEnterPressTicks <= 500);
+                    _lastEnterPressTicks = now;
+
+                    if (isDoubleEnter) SkipAllDialogue();
+                    else AdvanceDialogue();
+
                     e.Handled = true;
                     return;
                 }

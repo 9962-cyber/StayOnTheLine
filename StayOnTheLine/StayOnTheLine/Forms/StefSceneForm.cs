@@ -50,6 +50,7 @@ namespace StayOnTheLine.Forms
         private readonly AuditLogWindow _audit = new() { Visible = false };
         private readonly CharacterPortrait _stef = new() { Visible = false };
         private readonly BevelButton _btnBack = new() { Text = "‹ BACK" };
+        private readonly BevelButton _btnPause = new() { Text = "⏸ PAUSE" };
         // Things said at the desk (Charm walking over) play as a full-screen room scene: the office,
         // the speaker standing in it, the dialogue box and any spoken choices beneath it
         private readonly PhoneCallScene _roomScene = new();
@@ -71,6 +72,7 @@ namespace StayOnTheLine.Forms
         private bool _holdForAudit;
         private int _extraDelay;
         private int _clockGlitchTicks;
+        private long _lastThreadClickTicks;
 
         private string OperatorName => _profile?.OperatorName ?? "OPERATOR";
 
@@ -113,13 +115,14 @@ namespace StayOnTheLine.Forms
         {
             _crt.Controls.Add(_messenger);
             _crt.Controls.Add(_audit);
-            Controls.AddRange(new Control[] { _crt, _stef, _roomScene, _btnBack });
+            Controls.AddRange(new Control[] { _crt, _stef, _roomScene, _btnBack, _btnPause });
             _roomScene.SceneBackground = TryLoadImage("dispatch_desk_bg.png");
 
-            // Back to front: CRT, portraits, caption, back button
+            // Back to front: CRT, portraits, caption, back button, pause button
             _stef.BringToFront();
             _roomScene.BringToFront();
             _btnBack.BringToFront();
+            _btnPause.BringToFront();
         }
 
         private void WireEvents()
@@ -130,7 +133,20 @@ namespace StayOnTheLine.Forms
             response.SaveLogRequested += (s, e) => OnSaveLog();
             response.AuditLogRequested += (s, e) => OnAuditButton();
 
-            _messenger.Thread.Click += (s, e) => SkipWait();
+            _messenger.Thread.Click += (s, e) =>
+            {
+                long now = Environment.TickCount64;
+                if (now - _lastThreadClickTicks <= SystemInformation.DoubleClickTime)
+                {
+                    SkipAllWait();
+                }
+                else
+                {
+                    SkipWait();
+                }
+                _lastThreadClickTicks = now;
+            };
+            _messenger.Thread.DoubleClick += (s, e) => SkipAllWait();
             _roomScene.LineAdvanceRequested += (s, e) => DeliverNext();
             _roomScene.ChoiceSelected += (s, index) => OnChoiceSelected(this, index);
 
@@ -148,6 +164,7 @@ namespace StayOnTheLine.Forms
                 DialogResult = DialogResult.Cancel;
                 Close();
             };
+            _btnPause.Click += (s, e) => OpenPauseSettings();
 
             _crt.Paint += PaintCrt;
             _pump.Tick += (s, e) =>
@@ -244,6 +261,23 @@ namespace StayOnTheLine.Forms
                 return;
             }
             if (_pump.Enabled && !_holdForAudit) DeliverNext();
+        }
+
+        /// <summary>Double Enter or double click hurries all pending lines along until the next player response.</summary>
+        private void SkipAllWait()
+        {
+            if (_roomScene.Active)
+            {
+                _roomScene.CompleteAll();
+                return;
+            }
+            int safetyLimit = 50;
+            while (!_holdForAudit && (_pump.Enabled || _runner.HasPendingMessages) && safetyLimit-- > 0)
+            {
+                DeliverNext();
+                if (_holdForAudit || _runner.IsAwaitingChoice || _runner.IsAwaitingAction || _runner.IsFinished)
+                    break;
+            }
         }
 
         private void Render(ChatMessage line)
@@ -408,10 +442,71 @@ namespace StayOnTheLine.Forms
             _messenger.Thread.Append(_runner.Record(confirmation));
         }
 
-        protected override void OnKeyDown(KeyEventArgs e)
+        private void OpenPauseSettings()
         {
-            base.OnKeyDown(e);
-            int option = e.KeyCode switch
+            _pump.Stop();
+            using var settings = new SettingsForm
+            {
+                CurrentProfile = _profile,
+                ShowExitButton = true
+            };
+            var result = settings.ShowDialog(this);
+            if (result == DialogResult.Abort)
+            {
+                DialogResult = DialogResult.Cancel;
+                Close();
+            }
+            else
+            {
+                if (!_holdForAudit && (_runner.HasPendingMessages || (!_runner.IsAwaitingChoice && !_runner.IsAwaitingAction && !_runner.IsFinished)))
+                {
+                    ScheduleNext();
+                }
+            }
+        }
+
+        private long _lastEnterPressTicks;
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            Keys keyCode = keyData & Keys.KeyCode;
+
+            if (keyCode == Keys.Escape)
+            {
+                OpenPauseSettings();
+                return true;
+            }
+
+            if (keyCode is Keys.Space or Keys.Enter)
+            {
+                long now = Environment.TickCount64;
+                bool isDoubleEnter = (now - _lastEnterPressTicks <= 500);
+                _lastEnterPressTicks = now;
+
+                if (_roomScene.Active)
+                {
+                    if (isDoubleEnter) _roomScene.CompleteAll();
+                    else _roomScene.Advance();
+                    return true;
+                }
+
+                if (_messenger.Response.TryInvokeAction())
+                {
+                    return true;
+                }
+
+                if (isDoubleEnter)
+                {
+                    SkipAllWait();
+                }
+                else
+                {
+                    SkipWait();
+                }
+                return true;
+            }
+
+            int option = keyCode switch
             {
                 Keys.D1 or Keys.NumPad1 => 0,
                 Keys.D2 or Keys.NumPad2 => 1,
@@ -423,30 +518,24 @@ namespace StayOnTheLine.Forms
             {
                 if (_roomScene.TrySelect(option))
                 {
-                    e.Handled = true;
+                    return true;
                 }
-                else
+                if (_messenger.Response.TrySelect(option))
                 {
-                    e.Handled = _messenger.Response.TrySelect(option);
+                    return true;
                 }
             }
-            else if (e.KeyCode is Keys.Space or Keys.Enter)
-            {
-                if (_roomScene.Active)
-                {
-                    _roomScene.Advance();
-                }
-                else
-                {
-                    if (!_messenger.Response.TryInvokeAction()) SkipWait();
-                }
-                e.Handled = true;
-            }
-            else if (e.KeyCode == Keys.Escape)
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.Escape)
             {
                 e.Handled = true;
-                DialogResult = DialogResult.Cancel;
-                Close();
+                OpenPauseSettings();
             }
         }
 
@@ -556,11 +645,13 @@ namespace StayOnTheLine.Forms
             // 4. Room scene (Charm at the desk) covers the window; back button on the monitor bezel
             _roomScene.Bounds = ClientRectangle;
 
-            // 5. Back button on the monitor bezel, above the screen's top-right corner
+            // 5. Back and Pause buttons on the monitor bezel, above the screen's top-right corner
             int bezel = Math.Max(0, screen.Y - _imgRect.Y);
             int btnH = Math.Clamp((int)(bezel * 0.5f), 24, 40);
             int btnW = (int)(btnH * 3.2f);
+            int gap = Math.Max(6, (int)(4 * u));
             _btnBack.Bounds = new Rectangle(screen.Right - btnW, Math.Max(8, screen.Y - btnH - (int)(6 * u)), btnW, btnH);
+            _btnPause.Bounds = new Rectangle(screen.Right - (btnW * 2) - gap, Math.Max(8, screen.Y - btnH - (int)(6 * u)), btnW, btnH);
 
             Invalidate();
         }
@@ -572,6 +663,7 @@ namespace StayOnTheLine.Forms
             _theme = new MessengerTheme(scale);
             MessengerTheme.ApplyTo(_crt, _theme);
             MessengerTheme.ApplyTo(_btnBack, _theme);
+            MessengerTheme.ApplyTo(_btnPause, _theme);
             old?.Dispose();
         }
 

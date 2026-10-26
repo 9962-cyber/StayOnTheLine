@@ -54,7 +54,7 @@ namespace StayOnTheLine.Controls
         public CharacterDialogueBox()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.StandardDoubleClick, true);
             BackColor = Color.Black;
             Cursor = Cursors.Hand;
             Visible = false;
@@ -101,6 +101,19 @@ namespace StayOnTheLine.Controls
                 _typeTimer.Stop();
                 Invalidate();
             }
+        }
+
+        /// <summary>Immediately completes all remaining queued lines and finishes the dialogue scene.</summary>
+        public void CompleteAll()
+        {
+            if (_current == null && _queue.Count == 0) return;
+            _queue.Clear();
+            _current = null;
+            _standingSprite = null;
+            _backdropDirty = true;
+            _typeTimer.Stop();
+            Visible = false;
+            Finished?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>Completes the typing line, or moves on to the next queued line.</summary>
@@ -165,10 +178,27 @@ namespace StayOnTheLine.Controls
             Invalidate();
         }
 
+        private long _lastClickTicks;
+
         protected override void OnClick(EventArgs e)
         {
             base.OnClick(e);
-            Advance();
+            long now = Environment.TickCount64;
+            if (now - _lastClickTicks <= SystemInformation.DoubleClickTime)
+            {
+                CompleteAll();
+            }
+            else
+            {
+                Advance();
+            }
+            _lastClickTicks = now;
+        }
+
+        protected override void OnDoubleClick(EventArgs e)
+        {
+            base.OnDoubleClick(e);
+            CompleteAll();
         }
 
         protected override void OnResize(EventArgs e)
